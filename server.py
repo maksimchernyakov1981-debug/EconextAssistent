@@ -643,6 +643,15 @@ async def error_middleware(request: web.Request, handler):
         response.headers['Access-Control-Allow-Origin'] = '*'
         response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
         response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+        
+        # Убеждаемся, что API endpoints всегда возвращают JSON
+        if request.path.startswith('/api/'):
+            content_type = response.headers.get('Content-Type', '')
+            if 'application/json' not in content_type:
+                logger.warning("API endpoint %s вернул не-JSON ответ (content-type: %s), принудительно устанавливаем JSON", request.path, content_type)
+                # Принудительно устанавливаем JSON content-type
+                response.headers['Content-Type'] = 'application/json; charset=utf-8'
+        
         return response
     except web.HTTPException as ex:
         # Для HTTP исключений возвращаем JSON

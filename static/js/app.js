@@ -61,18 +61,76 @@ let state = {
 // Helper function to safely parse JSON response
 async function safeJsonParse(response) {
     try {
-        const contentType = response.headers.get('content-type');
-        if (contentType && contentType.includes('application/json')) {
+        // Клонируем response для чтения текста без потери оригинала
+        const contentType = response.headers.get('content-type') || '';
+        const isJson = contentType.includes('application/json');
+        
+        // Если ответ не OK, пытаемся получить сообщение об ошибке
+        if (!response.ok) {
+            let errorData = null;
+            try {
+                if (isJson) {
+                    errorData = await response.json();
+                } else {
+                    const text = await response.text();
+                    console.error(`HTTP ${response.status} - Не-JSON ответ:`, text.substring(0, 500));
+                    // Пытаемся извлечь полезную информацию из HTML
+                    const htmlMatch = text.match(/<title>(.*?)<\/title>/i) || text.match(/<h1>(.*?)<\/h1>/i);
+                    const errorMsg = htmlMatch ? htmlMatch[1] : `HTTP ${response.status}: ${response.statusText}`;
+                    return { 
+                        success: false, 
+                        error: errorMsg,
+                        status: response.status,
+                        data: [] 
+                    };
+                }
+            } catch (parseError) {
+                console.error('Ошибка парсинга ответа об ошибке:', parseError);
+                return { 
+                    success: false, 
+                    error: `HTTP ${response.status}: ${response.statusText}`,
+                    status: response.status,
+                    data: [] 
+                };
+            }
+            
+            // Если получили JSON с ошибкой, возвращаем его
+            if (errorData) {
+                return {
+                    success: false,
+                    error: errorData.error || errorData.message || `HTTP ${response.status}`,
+                    status: response.status,
+                    ...errorData
+                };
+            }
+        }
+        
+        // Если ответ OK и это JSON
+        if (isJson) {
             return await response.json();
-        } else {
-            // Если не JSON, читаем как текст (но только один раз!)
-            const text = await response.text();
-            console.error('Получен не-JSON ответ:', text.substring(0, 200));
-            return { success: false, error: 'Invalid response format', data: [] };
+        }
+        
+        // Если ответ OK, но не JSON - читаем как текст
+        const text = await response.text();
+        console.warn('Получен не-JSON ответ (OK):', text.substring(0, 200));
+        
+        // Пытаемся распарсить как JSON вручную (на случай если content-type неправильный)
+        try {
+            return JSON.parse(text);
+        } catch {
+            return { 
+                success: false, 
+                error: 'Invalid response format: expected JSON, got ' + contentType,
+                data: [] 
+            };
         }
     } catch (error) {
-        console.error('Ошибка парсинга ответа:', error);
-        return { success: false, error: error.message, data: [] };
+        console.error('Критическая ошибка парсинга ответа:', error);
+        return { 
+            success: false, 
+            error: error.message || 'Unknown error',
+            data: [] 
+        };
     }
 }
 
@@ -101,26 +159,30 @@ async function loadData() {
         let productsData = { success: false, products: [], error: 'Unknown error' };
         try {
             const productsRes = await fetch('/api/products');
+            console.log('📦 Запрос товаров - статус:', productsRes.status, 'content-type:', productsRes.headers.get('content-type'));
             productsData = await safeJsonParse(productsRes);
             if (!productsData.products) {
                 productsData.products = [];
             }
+            console.log('📦 Результат загрузки товаров:', productsData.success ? `✅ ${productsData.products?.length || 0} товаров` : `❌ ${productsData.error}`);
         } catch (error) {
-            console.error('Ошибка загрузки товаров:', error);
-            productsData = { success: false, error: error.message, products: [] };
+            console.error('❌ Критическая ошибка загрузки товаров:', error);
+            productsData = { success: false, error: error.message || 'Network error', products: [] };
         }
         
         // Загружаем категории
         let categoriesData = { success: false, categories: [], error: 'Unknown error' };
         try {
             const categoriesRes = await fetch('/api/categories');
+            console.log('📁 Запрос категорий - статус:', categoriesRes.status, 'content-type:', categoriesRes.headers.get('content-type'));
             categoriesData = await safeJsonParse(categoriesRes);
             if (!categoriesData.categories) {
                 categoriesData.categories = [];
             }
+            console.log('📁 Результат загрузки категорий:', categoriesData.success ? `✅ ${categoriesData.categories?.length || 0} категорий` : `❌ ${categoriesData.error}`);
         } catch (error) {
-            console.error('Ошибка загрузки категорий:', error);
-            categoriesData = { success: false, error: error.message, categories: [] };
+            console.error('❌ Критическая ошибка загрузки категорий:', error);
+            categoriesData = { success: false, error: error.message || 'Network error', categories: [] };
         }
         
         // Обрабатываем результаты
