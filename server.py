@@ -295,13 +295,24 @@ async def submit_order_api(request: web.Request) -> Response:
 async def serve_index(request: web.Request) -> Response:
     """Serve Mini App index page."""
     try:
-        with open("webapp/index.html", "r", encoding="utf-8") as f:
+        import os
+        file_path = "webapp/index.html"
+        if not os.path.exists(file_path):
+            logger.error("Файл index.html не найден: %s", os.path.abspath(file_path))
+            return Response(
+                text="<h1>Mini App not found</h1><p>File: " + file_path + "</p>",
+                status=404,
+                content_type="text/html"
+            )
+        with open(file_path, "r", encoding="utf-8") as f:
             content = f.read()
+        logger.debug("Отправка index.html")
         return Response(text=content, content_type="text/html")
-    except FileNotFoundError:
+    except Exception as e:
+        logger.error("Ошибка загрузки index.html: %s", e, exc_info=True)
         return Response(
-            text="<h1>Mini App not found</h1>",
-            status=404,
+            text=f"<h1>Error loading Mini App</h1><p>{str(e)}</p>",
+            status=500,
             content_type="text/html"
         )
 
@@ -615,6 +626,17 @@ async def get_user_orders_api(request: web.Request) -> Response:
 @web.middleware
 async def error_middleware(request: web.Request, handler):
     """Middleware для обработки ошибок и добавления CORS заголовков."""
+    # Обработка OPTIONS запросов для CORS
+    if request.method == 'OPTIONS':
+        return web.Response(
+            headers={
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type',
+                'Access-Control-Max-Age': '3600'
+            }
+        )
+    
     try:
         response = await handler(request)
         # Добавляем CORS заголовки

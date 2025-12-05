@@ -14,6 +14,24 @@ let state = {
     itemsPerPage: 10
 };
 
+// Helper function to safely parse JSON response
+async function safeJsonParse(response) {
+    try {
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+            return await response.json();
+        } else {
+            // Если не JSON, читаем как текст (но только один раз!)
+            const text = await response.text();
+            console.error('Получен не-JSON ответ:', text.substring(0, 200));
+            return { success: false, error: 'Invalid response format', data: [] };
+        }
+    } catch (error) {
+        console.error('Ошибка парсинга ответа:', error);
+        return { success: false, error: error.message, data: [] };
+    }
+}
+
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
     await loadData();
@@ -25,43 +43,42 @@ document.addEventListener('DOMContentLoaded', async () => {
 async function loadData() {
     showLoading(true);
     try {
-        const [productsRes, categoriesRes] = await Promise.all([
-            fetch('/api/products').catch(err => {
-                console.error('Ошибка загрузки товаров:', err);
-                return { ok: false, json: async () => ({ success: false, error: err.message, products: [] }) };
-            }),
-            fetch('/api/categories').catch(err => {
-                console.error('Ошибка загрузки категорий:', err);
-                return { ok: false, json: async () => ({ success: false, error: err.message, categories: [] }) };
-            })
-        ]);
-        
-        let productsData, categoriesData;
-        
+        // Загружаем товары
+        let productsData = { success: false, products: [], error: 'Unknown error' };
         try {
-            productsData = await productsRes.json();
-        } catch (e) {
-            console.error('Ошибка парсинга JSON товаров:', e);
-            const text = await productsRes.text();
-            console.error('Полученный ответ:', text.substring(0, 200));
-            productsData = { success: false, error: 'Invalid JSON response', products: [] };
+            const productsRes = await fetch('/api/products');
+            productsData = await safeJsonParse(productsRes);
+            if (!productsData.products) {
+                productsData.products = [];
+            }
+        } catch (error) {
+            console.error('Ошибка загрузки товаров:', error);
+            productsData = { success: false, error: error.message, products: [] };
         }
         
+        // Загружаем категории
+        let categoriesData = { success: false, categories: [], error: 'Unknown error' };
         try {
-            categoriesData = await categoriesRes.json();
-        } catch (e) {
-            console.error('Ошибка парсинга JSON категорий:', e);
-            const text = await categoriesRes.text();
-            console.error('Полученный ответ:', text.substring(0, 200));
-            categoriesData = { success: false, error: 'Invalid JSON response', categories: [] };
+            const categoriesRes = await fetch('/api/categories');
+            categoriesData = await safeJsonParse(categoriesRes);
+            if (!categoriesData.categories) {
+                categoriesData.categories = [];
+            }
+        } catch (error) {
+            console.error('Ошибка загрузки категорий:', error);
+            categoriesData = { success: false, error: error.message, categories: [] };
         }
         
+        // Обрабатываем результаты
         if (productsData.success && productsData.products) {
             state.products = productsData.products;
             console.log(`Загружено ${state.products.length} товаров`);
         } else {
             console.warn('Товары не загружены:', productsData.error);
-            state.products = [];
+            state.products = productsData.products || [];
+            if (productsData.error) {
+                showError('Товары не загружены: ' + productsData.error);
+            }
         }
         
         if (categoriesData.success && categoriesData.categories) {
@@ -70,7 +87,10 @@ async function loadData() {
             console.log(`Загружено ${state.categories.length} категорий`);
         } else {
             console.warn('Категории не загружены:', categoriesData.error);
-            state.categories = [];
+            state.categories = categoriesData.categories || [];
+            if (categoriesData.error && !productsData.error) {
+                showError('Категории не загружены: ' + categoriesData.error);
+            }
         }
         
         await loadCart();
@@ -89,7 +109,7 @@ async function loadCart() {
     
     try {
         const res = await fetch(`/api/cart?user_id=${userId}`);
-        const data = await res.json();
+        const data = await safeJsonParse(res);
         if (data.success) {
             state.cart = data.cart;
             renderCart();
@@ -323,7 +343,7 @@ async function addToCart(productId) {
             })
         });
         
-        const data = await res.json();
+        const data = await safeJsonParse(res);
         if (data.success) {
             tg.showPopup({
                 title: 'Успешно',
@@ -354,7 +374,7 @@ async function removeFromCart(productId) {
             })
         });
         
-        const data = await res.json();
+        const data = await safeJsonParse(res);
         if (data.success) {
             await loadCart();
         }
@@ -384,7 +404,7 @@ async function updateQuantity(productId, quantity) {
             })
         });
         
-        const data = await res.json();
+        const data = await safeJsonParse(res);
         if (data.success) {
             await loadCart();
         }
@@ -518,7 +538,7 @@ async function handleCheckout(e) {
             })
         });
         
-        const data = await res.json();
+        const data = await safeJsonParse(res);
         if (data.success) {
             tg.showPopup({
                 title: 'Заказ оформлен!',
@@ -580,7 +600,7 @@ async function searchProducts() {
     showLoading(true);
     try {
         const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
-        const data = await res.json();
+        const data = await safeJsonParse(res);
         
         if (data.success) {
             state.currentCategory = null;
@@ -666,7 +686,7 @@ async function sendAIMessage() {
             })
         });
         
-        const data = await res.json();
+        const data = await safeJsonParse(res);
         
         // Remove typing indicator
         const typingEl = document.getElementById(`ai-msg-${typingId}`);
@@ -737,7 +757,7 @@ function showProductDetailsById(productId) {
     // Если не найден, загружаем из API
     if (!product) {
         fetch(`/api/products`)
-            .then(res => res.json())
+            .then(res => safeJsonParse(res))
             .then(data => {
                 if (data.success) {
                     state.products = data.products;
@@ -787,7 +807,7 @@ function hideInfoSection() {
 async function loadFAQ() {
     try {
         const res = await fetch('/api/faq');
-        const data = await res.json();
+        const data = await safeJsonParse(res);
         
         if (data.success) {
             const container = document.getElementById('faq-list');
@@ -872,7 +892,7 @@ async function loadOrders() {
     showLoading(true);
     try {
         const res = await fetch(`/api/orders?user_id=${userId}`);
-        const data = await res.json();
+        const data = await safeJsonParse(res);
         
         if (data.success) {
             const container = document.getElementById('orders-list');
@@ -932,7 +952,7 @@ async function loadSubscription() {
     
     try {
         const res = await fetch(`/api/subscription?user_id=${userId}`);
-        const data = await res.json();
+        const data = await safeJsonParse(res);
         
         if (data.success) {
             const statusEl = document.getElementById('subscription-status');
@@ -972,7 +992,7 @@ async function toggleSubscription() {
             })
         });
         
-        const data = await res.json();
+        const data = await safeJsonParse(res);
         if (data.success) {
             await loadSubscription();
             tg.showPopup({
@@ -1009,7 +1029,7 @@ async function submitWholesale(e) {
             })
         });
         
-        const data = await res.json();
+        const data = await safeJsonParse(res);
         if (data.success) {
             tg.showPopup({
                 title: 'Заявка отправлена!',
