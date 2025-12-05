@@ -668,10 +668,13 @@ async def error_middleware(request: web.Request, handler):
     
     # Логируем запросы к API
     if request.path.startswith('/api/'):
-        logger.debug("API запрос: %s %s", request.method, request.path)
+        logger.info("📥 API запрос: %s %s от %s", request.method, request.path, request.remote)
     
     try:
         response = await handler(request)
+        # Логируем успешные ответы
+        if request.path.startswith('/api/'):
+            logger.info("✅ API ответ: %s %s -> %d", request.method, request.path, response.status)
         # Добавляем CORS заголовки
         response.headers['Access-Control-Allow-Origin'] = '*'
         response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
