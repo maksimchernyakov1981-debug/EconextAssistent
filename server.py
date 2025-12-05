@@ -216,7 +216,35 @@ async def submit_order_api(request: web.Request) -> Response:
             )
         
         from database.orders import save_order
-        from database.cart import clear_cart
+        from database.cart import clear_cart, get_cart_items
+        from utils.delivery import calculate_delivery_cost
+        
+        # Получаем корзину для расчета суммы
+        cart_items = get_cart_items(int(user_id))
+        products_dict = {}
+        total = 0
+        
+        # Загружаем товары для расчета
+        with sqlite3.connect("cache.db") as conn:
+            conn.row_factory = sqlite3.Row
+            c = conn.cursor()
+            c.execute("SELECT content FROM products_cache WHERE key = 'products'")
+            row = c.fetchone()
+            if row:
+                products = json.loads(row['content'])
+                products_dict = {p["id"]: p for p in products}
+        
+        for product_id, quantity in cart_items:
+            product = products_dict.get(product_id)
+            if product:
+                try:
+                    price = float(product.get("price", 0))
+                    total += price * quantity
+                except (ValueError, TypeError):
+                    pass
+        
+        delivery_cost = calculate_delivery_cost(total)
+        total_with_delivery = total + delivery_cost
         
         # Сохраняем заказ
         order_id = save_order(int(user_id), order_data, total_with_delivery)
@@ -271,6 +299,269 @@ async def serve_static(request: web.Request) -> Response:
         return Response(status=404)
 
 
+async def get_faq(request: web.Request) -> Response:
+    """Get FAQ questions and answers."""
+    try:
+        from personality.faq import FAQ_QUESTIONS_ANSWERS
+        return web.json_response({
+            "success": True,
+            "faq": FAQ_QUESTIONS_ANSWERS
+        })
+    except Exception as e:
+        logger.error("Ошибка получения FAQ: %s", e)
+        return web.json_response(
+            {"success": False, "error": str(e)},
+            status=500
+        )
+
+
+async def search_products_api(request: web.Request) -> Response:
+    """Search products by query."""
+    try:
+        query = request.query.get('q', '').strip()
+        if not query:
+            return web.json_response(
+                {"success": False, "error": "Query required"},
+                status=400
+            )
+        
+        with sqlite3.connect("cache.db") as conn:
+            conn.row_factory = sqlite3.Row
+            c = conn.cursor()
+            c.execute("SELECT content FROM products_cache WHERE key = 'products'")
+            row = c.fetchone()
+            if not row:
+                return web.json_response(
+                    {"success": False, "error": "Products not found"},
+                    status=404
+                )
+            
+            products = json.loads(row['content'])
+            query_lower = query.lower()
+            
+            # Простой поиск по названию и описанию
+            matched = []
+            for product in products:
+                name = product.get("name", "").lower()
+                description = product.get("description", "").lower()
+                if query_lower in name or query_lower in description:
+                    matched.append(product)
+            
+            return web.json_response({
+                "success": True,
+                "products": matched,
+                "count": len(matched)
+            })
+    except Exception as e:
+        logger.error("Ошибка поиска товаров: %s", e)
+        return web.json_response(
+            {"success": False, "error": str(e)},
+            status=500
+        )
+
+
+async def ai_chat_api(request: web.Request) -> Response:
+    """Handle AI chat messages."""
+    try:
+        data = await request.json()
+        user_id = data.get('user_id')
+        message = data.get('message', '').strip()
+        
+        if not user_id or not message:
+            return web.json_response(
+                {"success": False, "error": "user_id and message required"},
+                status=400
+            )
+        
+        # Получаем товары
+        with sqlite3.connect("cache.db") as conn:
+            conn.row_factory = sqlite3.Row
+            c = conn.cursor()
+            c.execute("SELECT content FROM products_cache WHERE key = 'products'")
+            row = c.fetchone()
+            products = []
+            if row:
+                products = json.loads(row['content'])
+        
+        # Генерируем ответ через AI service
+        import aiohttp
+        from services.ai_service import generate_maxim_reply
+        
+        async with aiohttp.ClientSession() as session:
+            reply_text, recommended_products, product_ids, order_buttons_mode = await generate_maxim_reply(
+                message, session, products
+            )
+        
+        return web.json_response({
+            "success": True,
+            "reply": reply_text,
+            "recommended_products": recommended_products[:5],  # Ограничиваем до 5
+            "product_ids": product_ids,
+            "order_buttons_mode": order_buttons_mode
+        })
+    except Exception as e:
+        logger.error("Ошибка AI чата: %s", e)
+        return web.json_response(
+            {"success": False, "error": str(e)},
+            status=500
+        )
+
+
+async def submit_wholesale_api(request: web.Request) -> Response:
+    """Submit wholesale request."""
+    try:
+        data = await request.json()
+        user_id = data.get('user_id')
+        name = data.get('name')
+        contact = data.get('contact')
+        question = data.get('question')
+        
+        if not all([user_id, name, contact, question]):
+            return web.json_response(
+                {"success": False, "error": "All fields required"},
+                status=400
+            )
+        
+        from database.wholesale import save_wholesale_request
+        from config.settings import TELEGRAM_BOT_TOKEN, OWNER_CHAT_ID
+        
+        request_id = save_wholesale_request(
+            int(user_id), name, contact, question
+        )
+        
+        # Отправляем уведомление админу
+        try:
+            async with aiohttp.ClientSession() as session:
+                message = (
+                    f"<b>📦 Новая оптовая заявка</b>\n"
+                    f"ID: {request_id}\n"
+                    f"Пользователь: {user_id}\n\n"
+                    f"Имя: {name}\n"
+                    f"Контакт: {contact}\n"
+                    f"Вопрос: {question}"
+                )
+                await session.post(
+                    f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+                    json={
+                        "chat_id": OWNER_CHAT_ID,
+                        "text": message,
+                        "parse_mode": "HTML"
+                    }
+                )
+        except Exception as e:
+            logger.error("Ошибка отправки уведомления: %s", e)
+        
+        return web.json_response({
+            "success": True,
+            "request_id": request_id
+        })
+    except Exception as e:
+        logger.error("Ошибка оптовой заявки: %s", e)
+        return web.json_response(
+            {"success": False, "error": str(e)},
+            status=500
+        )
+
+
+async def get_subscription_status(request: web.Request) -> Response:
+    """Get user subscription status."""
+    try:
+        user_id = request.query.get('user_id')
+        if not user_id:
+            return web.json_response(
+                {"success": False, "error": "user_id required"},
+                status=400
+            )
+        
+        from database.subscriptions import is_user_subscribed
+        subscribed = is_user_subscribed(int(user_id))
+        
+        return web.json_response({
+            "success": True,
+            "subscribed": subscribed
+        })
+    except Exception as e:
+        logger.error("Ошибка получения статуса подписки: %s", e)
+        return web.json_response(
+            {"success": False, "error": str(e)},
+            status=500
+        )
+
+
+async def toggle_subscription_api(request: web.Request) -> Response:
+    """Toggle user subscription."""
+    try:
+        data = await request.json()
+        user_id = data.get('user_id')
+        chat_id = data.get('chat_id')
+        username = data.get('username', '')
+        
+        if not user_id or not chat_id:
+            return web.json_response(
+                {"success": False, "error": "user_id and chat_id required"},
+                status=400
+            )
+        
+        from database.subscriptions import is_user_subscribed, subscribe_user, unsubscribe_user
+        
+        subscribed = is_user_subscribed(int(user_id))
+        
+        if subscribed:
+            unsubscribe_user(int(user_id))
+            new_status = False
+        else:
+            subscribe_user(int(user_id), int(chat_id), username)
+            new_status = True
+        
+        return web.json_response({
+            "success": True,
+            "subscribed": new_status
+        })
+    except Exception as e:
+        logger.error("Ошибка переключения подписки: %s", e)
+        return web.json_response(
+            {"success": False, "error": str(e)},
+            status=500
+        )
+
+
+async def get_user_orders_api(request: web.Request) -> Response:
+    """Get user orders."""
+    try:
+        user_id = request.query.get('user_id')
+        if not user_id:
+            return web.json_response(
+                {"success": False, "error": "user_id required"},
+                status=400
+            )
+        
+        from database.orders import get_user_orders
+        orders = get_user_orders(int(user_id), limit=20)
+        
+        orders_list = []
+        for order in orders:
+            order_id, total_amount, status, created_at, order_data_json = order
+            order_data = json.loads(order_data_json) if order_data_json else {}
+            orders_list.append({
+                "id": order_id,
+                "total_amount": total_amount,
+                "status": status,
+                "created_at": created_at,
+                "order_data": order_data
+            })
+        
+        return web.json_response({
+            "success": True,
+            "orders": orders_list
+        })
+    except Exception as e:
+        logger.error("Ошибка получения заказов: %s", e)
+        return web.json_response(
+            {"success": False, "error": str(e)},
+            status=500
+        )
+
+
 def create_webapp_app() -> web.Application:
     """Create aiohttp application for Mini App."""
     app = web.Application()
@@ -284,6 +575,13 @@ def create_webapp_app() -> web.Application:
         web.post("/api/cart/remove", remove_from_cart_api),
         web.post("/api/cart/update", update_cart_quantity_api),
         web.post("/api/order", submit_order_api),
+        web.get("/api/search", search_products_api),
+        web.get("/api/faq", get_faq),
+        web.post("/api/ai/chat", ai_chat_api),
+        web.post("/api/wholesale", submit_wholesale_api),
+        web.get("/api/subscription", get_subscription_status),
+        web.post("/api/subscription/toggle", toggle_subscription_api),
+        web.get("/api/orders", get_user_orders_api),
     ])
     
     # Static files

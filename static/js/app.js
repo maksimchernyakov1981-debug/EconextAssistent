@@ -123,6 +123,15 @@ function showTab(tabName) {
     
     if (tabName === 'cart') {
         loadCart();
+    } else if (tabName === 'ai') {
+        // Initialize AI chat
+        const messagesContainer = document.getElementById('ai-messages');
+        if (messagesContainer && messagesContainer.children.length === 0) {
+            addAIMessage('assistant', '👋 Привет! Я Максим, твой ИИ-консультант по микрофибре. Задай мне любой вопрос!');
+        }
+    } else if (tabName === 'info') {
+        // Reset info section
+        hideInfoSection();
     }
 }
 
@@ -162,6 +171,7 @@ function showProducts(categoryId) {
 function showCategories() {
     document.getElementById('categories-section').classList.remove('hidden');
     document.getElementById('products-section').classList.add('hidden');
+    document.getElementById('all-products-section').classList.add('hidden');
     document.getElementById('product-details').classList.add('hidden');
     state.currentCategory = null;
     state.currentProduct = null;
@@ -217,6 +227,7 @@ function showProductDetails(product) {
     state.currentProduct = product;
     
     document.getElementById('products-section').classList.add('hidden');
+    document.getElementById('all-products-section').classList.add('hidden');
     document.getElementById('product-details').classList.remove('hidden');
     
     const container = document.getElementById('product-content');
@@ -498,6 +509,450 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+// Search products
+async function searchProducts() {
+    const query = document.getElementById('search-input').value.trim();
+    if (!query) {
+        showError('Введите поисковый запрос');
+        return;
+    }
+    
+    showLoading(true);
+    try {
+        const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+        const data = await res.json();
+        
+        if (data.success) {
+            state.currentCategory = null;
+            document.getElementById('categories-section').classList.add('hidden');
+            document.getElementById('products-section').classList.add('hidden');
+            document.getElementById('all-products-section').classList.remove('hidden');
+            
+            const container = document.getElementById('all-products-list');
+            container.innerHTML = '';
+            
+            if (data.products.length === 0) {
+                container.innerHTML = '<div class="empty-state"><p>Товары не найдены</p></div>';
+            } else {
+                data.products.forEach(product => {
+                    const card = createProductCard(product);
+                    container.appendChild(card);
+                });
+            }
+        } else {
+            showError('Ошибка поиска: ' + (data.error || 'Неизвестная ошибка'));
+        }
+    } catch (error) {
+        showError('Ошибка поиска: ' + error.message);
+    } finally {
+        showLoading(false);
+    }
+}
+
+// Show all products
+function showAllProducts() {
+    document.getElementById('categories-section').classList.add('hidden');
+    document.getElementById('products-section').classList.add('hidden');
+    document.getElementById('all-products-section').classList.remove('hidden');
+    document.getElementById('product-details').classList.add('hidden');
+    
+    state.currentCategory = null;
+    state.currentProduct = null;
+    
+    const container = document.getElementById('all-products-list');
+    container.innerHTML = '';
+    
+    if (state.products.length === 0) {
+        container.innerHTML = '<div class="empty-state"><p>Товары не загружены</p></div>';
+        return;
+    }
+    
+    state.products.forEach(product => {
+        const card = createProductCard(product);
+        container.appendChild(card);
+    });
+}
+
+// AI Chat functions
+let aiMessages = [];
+
+async function sendAIMessage() {
+    const input = document.getElementById('ai-input');
+    const message = input.value.trim();
+    if (!message) return;
+    
+    const userId = tg.initDataUnsafe?.user?.id;
+    if (!userId) {
+        tg.showAlert('Ошибка: не удалось определить пользователя');
+        return;
+    }
+    
+    // Add user message
+    addAIMessage('user', message);
+    input.value = '';
+    
+    // Show typing indicator
+    const typingId = addAIMessage('assistant', '🤔 Думаю...', true);
+    
+    try {
+        const res = await fetch('/api/ai/chat', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                user_id: userId,
+                message: message
+            })
+        });
+        
+        const data = await res.json();
+        
+        // Remove typing indicator
+        const typingEl = document.getElementById(`ai-msg-${typingId}`);
+        if (typingEl) typingEl.remove();
+        
+        if (data.success) {
+            addAIMessage('assistant', data.reply);
+            
+            // Show recommended products if any
+            if (data.recommended_products && data.recommended_products.length > 0) {
+                const productsHtml = data.recommended_products.map(p => 
+                    `<div class="ai-product-suggestion" onclick="showProductDetailsById('${p.id}')">
+                        <strong>${escapeHtml(p.name)}</strong> - ${p.price} ₽
+                    </div>`
+                ).join('');
+                addAIMessage('assistant', '<div class="ai-products">' + productsHtml + '</div>', false, true);
+            }
+        } else {
+            addAIMessage('assistant', 'Извините, произошла ошибка. Попробуйте еще раз.');
+        }
+    } catch (error) {
+        const typingEl = document.getElementById(`ai-msg-${typingId}`);
+        if (typingEl) typingEl.remove();
+        addAIMessage('assistant', 'Ошибка соединения. Проверьте интернет.');
+    }
+}
+
+function addAIMessage(role, text, isTyping = false, isHtml = false) {
+    const messagesContainer = document.getElementById('ai-messages');
+    const messageId = Date.now();
+    const messageEl = document.createElement('div');
+    messageEl.id = `ai-msg-${messageId}`;
+    messageEl.className = `ai-message ai-message-${role}`;
+    
+    if (isHtml) {
+        messageEl.innerHTML = text;
+    } else {
+        messageEl.textContent = text;
+    }
+    
+    messagesContainer.appendChild(messageEl);
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    
+    return messageId;
+}
+
+// Show product by ID
+function showProductDetailsById(productId) {
+    const product = state.products.find(p => p.id === productId);
+    if (product) {
+        showTab('catalog');
+        showProductDetails(product);
+    }
+}
+
+// Info section functions
+function showInfoSection(section) {
+    document.querySelectorAll('.info-section').forEach(s => s.classList.add('hidden'));
+    document.querySelector('.info-menu').classList.add('hidden');
+    
+    const sectionEl = document.getElementById(`${section}-section`);
+    if (sectionEl) {
+        sectionEl.classList.remove('hidden');
+        
+        // Load section data
+        if (section === 'faq') loadFAQ();
+        else if (section === 'orders') loadOrders();
+        else if (section === 'subscription') loadSubscription();
+        else if (section === 'order-conditions') loadOrderConditions();
+        else if (section === 'delivery') loadDelivery();
+        else if (section === 'contacts') loadContacts();
+        else if (section === 'referral') loadReferral();
+    }
+}
+
+function hideInfoSection() {
+    document.querySelectorAll('.info-section').forEach(s => s.classList.add('hidden'));
+    document.querySelector('.info-menu').classList.remove('hidden');
+}
+
+async function loadFAQ() {
+    try {
+        const res = await fetch('/api/faq');
+        const data = await res.json();
+        
+        if (data.success) {
+            const container = document.getElementById('faq-list');
+            container.innerHTML = data.faq.map((item, idx) => `
+                <div class="faq-item">
+                    <div class="faq-question">${escapeHtml(item.question)}</div>
+                    <div class="faq-answer">${escapeHtml(item.answer)}</div>
+                </div>
+            `).join('');
+        }
+    } catch (error) {
+        console.error('Ошибка загрузки FAQ:', error);
+    }
+}
+
+function loadOrderConditions() {
+    const container = document.getElementById('order-conditions-content');
+    container.innerHTML = `
+        <h2>📋 Условия заказа</h2>
+        <div class="info-text">
+            <p><b>🛒 Как заказать товар?</b></p>
+            <p>1. Через сайт: <a href="https://www.эколайф.рус">www.эколайф.рус</a></p>
+            <p>2. Скачать приложение: <a href="https://econext.uds.app/c/join?ref=cvaw5707">econext.uds.app</a></p>
+            <p>3. Прямо в этом боте: выберите товар, добавьте в корзину и оформите заказ</p>
+            <p>4. Написать или позвонить:</p>
+            <p>   • Telegram: @MaxChe1981</p>
+            <p>   • Телефон: +7 921 252-32-95</p>
+            <p><i>⏱️ Я свяжусь с Вами в течение 15 минут для подтверждения заказа!</i></p>
+        </div>
+    `;
+}
+
+function loadDelivery() {
+    const container = document.getElementById('delivery-content');
+    container.innerHTML = `
+        <h2>🚚 Доставка</h2>
+        <div class="info-text">
+            <p><b>Бесплатная доставка от 3000 ₽</b></p>
+            <p>При сумме заказа менее 3000 ₽ стоимость доставки составляет 350 ₽</p>
+            <p><b>Способы доставки:</b></p>
+            <p>• Почта России</p>
+            <p>• СДЭК</p>
+            <p>• Пятёрочка</p>
+        </div>
+    `;
+}
+
+function loadContacts() {
+    const container = document.getElementById('contacts-content');
+    container.innerHTML = `
+        <h2>📞 Контакты</h2>
+        <div class="info-text">
+            <p><b>Telegram:</b> <a href="https://t.me/MaxChe1981">@MaxChe1981</a></p>
+            <p><b>Телефон:</b> +7 921 252-32-95</p>
+            <p><b>Сайт:</b> <a href="https://www.эколайф.рус">www.эколайф.рус</a></p>
+            <p><b>Канал:</b> <a href="https://t.me/ecoNEXT_microfiber">t.me/ecoNEXT_microfiber</a></p>
+            <p><b>Группа ВК:</b> <a href="https://vk.com/ecolifemicrofiber">vk.com/ecolifemicrofiber</a></p>
+        </div>
+    `;
+}
+
+function loadReferral() {
+    const container = document.getElementById('referral-content');
+    container.innerHTML = `
+        <h2>🎁 Реферальная программа</h2>
+        <div class="info-text">
+            <p>Приглашайте друзей и получайте бонусы!</p>
+            <p>За каждого приглашенного друга вы получите бонусы на ваш счет.</p>
+            <p>Ваша реферальная ссылка будет доступна в боте.</p>
+        </div>
+    `;
+}
+
+async function loadOrders() {
+    const userId = tg.initDataUnsafe?.user?.id;
+    if (!userId) return;
+    
+    try {
+        const res = await fetch(`/api/orders?user_id=${userId}`);
+        const data = await res.json();
+        
+        if (data.success) {
+            const container = document.getElementById('orders-list');
+            if (data.orders.length === 0) {
+                container.innerHTML = '<div class="empty-state"><p>У вас пока нет заказов</p></div>';
+            } else {
+                container.innerHTML = data.orders.map(order => `
+                    <div class="order-item">
+                        <div class="order-header">
+                            <span><b>Заказ #${order.id}</b></span>
+                            <span class="order-status">${order.status}</span>
+                        </div>
+                        <div class="order-info">
+                            <p>Сумма: ${order.total_amount.toFixed(2)} ₽</p>
+                            <p>Дата: ${new Date(order.created_at).toLocaleDateString('ru-RU')}</p>
+                            ${order.order_data.name ? `<p>Получатель: ${escapeHtml(order.order_data.name)}</p>` : ''}
+                        </div>
+                    </div>
+                `).join('');
+            }
+        }
+    } catch (error) {
+        console.error('Ошибка загрузки заказов:', error);
+    }
+}
+
+async function loadSubscription() {
+    const userId = tg.initDataUnsafe?.user?.id;
+    if (!userId) return;
+    
+    try {
+        const res = await fetch(`/api/subscription?user_id=${userId}`);
+        const data = await res.json();
+        
+        if (data.success) {
+            const statusEl = document.getElementById('subscription-status');
+            const btnEl = document.getElementById('toggle-subscription-btn');
+            
+            if (data.subscribed) {
+                statusEl.innerHTML = '<p>✅ Вы подписаны на обновления</p>';
+                btnEl.textContent = 'Отписаться';
+            } else {
+                statusEl.innerHTML = '<p>❌ Вы не подписаны</p>';
+                btnEl.textContent = 'Подписаться';
+            }
+        }
+    } catch (error) {
+        console.error('Ошибка загрузки подписки:', error);
+    }
+}
+
+async function toggleSubscription() {
+    const userId = tg.initDataUnsafe?.user?.id;
+    const chatId = tg.initDataUnsafe?.chat?.id;
+    const username = tg.initDataUnsafe?.user?.username || '';
+    
+    if (!userId || !chatId) {
+        tg.showAlert('Ошибка: не удалось определить пользователя');
+        return;
+    }
+    
+    try {
+        const res = await fetch('/api/subscription/toggle', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                user_id: userId,
+                chat_id: chatId,
+                username: username
+            })
+        });
+        
+        const data = await res.json();
+        if (data.success) {
+            await loadSubscription();
+            tg.showPopup({
+                title: data.subscribed ? 'Подписка оформлена' : 'Подписка отменена',
+                message: data.subscribed 
+                    ? 'Вы будете получать уведомления о новинках и акциях!'
+                    : 'Вы отписались от уведомлений',
+                buttons: [{type: 'ok'}]
+            });
+        }
+    } catch (error) {
+        tg.showAlert('Ошибка: ' + error.message);
+    }
+}
+
+async function submitWholesale(e) {
+    e.preventDefault();
+    const userId = tg.initDataUnsafe?.user?.id;
+    if (!userId) {
+        tg.showAlert('Ошибка: не удалось определить пользователя');
+        return;
+    }
+    
+    const formData = new FormData(e.target);
+    try {
+        const res = await fetch('/api/wholesale', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                user_id: userId,
+                name: formData.get('name'),
+                contact: formData.get('contact'),
+                question: formData.get('question')
+            })
+        });
+        
+        const data = await res.json();
+        if (data.success) {
+            tg.showPopup({
+                title: 'Заявка отправлена!',
+                message: 'Спасибо за заявку! Мы свяжемся с вами в ближайшее время.',
+                buttons: [{type: 'ok'}]
+            });
+            e.target.reset();
+            hideInfoSection();
+        } else {
+            tg.showAlert('Ошибка: ' + (data.error || 'Неизвестная ошибка'));
+        }
+    } catch (error) {
+        tg.showAlert('Ошибка отправки заявки: ' + error.message);
+    }
+}
+
+// Update event listeners
+function setupEventListeners() {
+    // Tabs
+    document.querySelectorAll('.tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            const tabName = tab.dataset.tab;
+            showTab(tabName);
+        });
+    });
+    
+    // Back buttons
+    document.getElementById('back-to-categories')?.addEventListener('click', () => {
+        showCategories();
+    });
+    
+    document.getElementById('back-to-categories-from-all')?.addEventListener('click', () => {
+        showCategories();
+    });
+    
+    document.getElementById('back-to-products')?.addEventListener('click', () => {
+        if (state.currentCategory) {
+            showProducts(state.currentCategory);
+        } else {
+            showAllProducts();
+        }
+    });
+    
+    // Cart button
+    document.getElementById('cart-btn')?.addEventListener('click', () => {
+        showTab('cart');
+    });
+    
+    // Checkout
+    document.getElementById('checkout-btn')?.addEventListener('click', () => {
+        openCheckoutModal();
+    });
+    
+    document.getElementById('checkout-form')?.addEventListener('submit', handleCheckout);
+    
+    // Search
+    document.getElementById('search-btn')?.addEventListener('click', searchProducts);
+    document.getElementById('search-input')?.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') searchProducts();
+    });
+    
+    // AI Chat
+    document.getElementById('ai-send-btn')?.addEventListener('click', sendAIMessage);
+    document.getElementById('ai-input')?.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') sendAIMessage();
+    });
+    
+    // Subscription
+    document.getElementById('toggle-subscription-btn')?.addEventListener('click', toggleSubscription);
+    
+    // Wholesale
+    document.getElementById('wholesale-form')?.addEventListener('submit', submitWholesale);
+}
+
 // Make functions global for onclick handlers
 window.showTab = showTab;
 window.addToCart = addToCart;
@@ -505,4 +960,11 @@ window.removeFromCart = removeFromCart;
 window.updateQuantity = updateQuantity;
 window.changePage = changePage;
 window.closeCheckoutModal = closeCheckoutModal;
+window.showInfoSection = showInfoSection;
+window.hideInfoSection = hideInfoSection;
+window.showProductDetailsById = showProductDetailsById;
+window.toggleSubscription = toggleSubscription;
+window.showAllProducts = showAllProducts;
+window.searchProducts = searchProducts;
+window.sendAIMessage = sendAIMessage;
 
