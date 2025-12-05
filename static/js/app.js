@@ -73,10 +73,16 @@ async function safeJsonParse(response) {
                     errorData = await response.json();
                 } else {
                     const text = await response.text();
-                    console.error(`HTTP ${response.status} - Не-JSON ответ:`, text.substring(0, 500));
+                    console.error(`HTTP ${response.status} - Не-JSON ответ для ${response.url}:`, text.substring(0, 500));
                     // Пытаемся извлечь полезную информацию из HTML
                     const htmlMatch = text.match(/<title>(.*?)<\/title>/i) || text.match(/<h1>(.*?)<\/h1>/i);
-                    const errorMsg = htmlMatch ? htmlMatch[1] : `HTTP ${response.status}: ${response.statusText}`;
+                    let errorMsg = htmlMatch ? htmlMatch[1] : `HTTP ${response.status}: ${response.statusText}`;
+                    
+                    // Специальная обработка для 404
+                    if (response.status === 404) {
+                        errorMsg = `Endpoint не найден: ${new URL(response.url).pathname}`;
+                    }
+                    
                     return { 
                         success: false, 
                         error: errorMsg,
@@ -86,9 +92,13 @@ async function safeJsonParse(response) {
                 }
             } catch (parseError) {
                 console.error('Ошибка парсинга ответа об ошибке:', parseError);
+                let errorMsg = `HTTP ${response.status}: ${response.statusText}`;
+                if (response.status === 404) {
+                    errorMsg = `Endpoint не найден: ${new URL(response.url).pathname}`;
+                }
                 return { 
                     success: false, 
-                    error: `HTTP ${response.status}: ${response.statusText}`,
+                    error: errorMsg,
                     status: response.status,
                     data: [] 
                 };

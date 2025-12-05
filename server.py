@@ -672,6 +672,18 @@ async def error_middleware(request: web.Request, handler):
         raise
 
 
+async def handle_404(request: web.Request) -> Response:
+    """Handle 404 errors for API requests."""
+    if request.path.startswith('/api/'):
+        logger.warning("404 для API endpoint: %s %s", request.method, request.path)
+        return web.json_response({
+            "success": False,
+            "error": f"API endpoint not found: {request.method} {request.path}"
+        }, status=404)
+    # Для не-API запросов возвращаем стандартную 404
+    raise web.HTTPNotFound()
+
+
 def create_webapp_app() -> web.Application:
     """Create aiohttp application for Mini App."""
     app = web.Application(middlewares=[error_middleware])
@@ -703,6 +715,9 @@ def create_webapp_app() -> web.Application:
     app.add_routes([
         web.get("/", serve_index),
     ])
+    
+    # Обработчик для всех остальных маршрутов (404)
+    app.router.add_route('*', '/{path:.*}', handle_404)
     
     return app
 
