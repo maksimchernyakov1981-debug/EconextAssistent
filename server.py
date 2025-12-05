@@ -10,6 +10,7 @@ from config.settings import logger
 
 async def get_products(request: web.Request) -> Response:
     """Get all products for Mini App."""
+    logger.info("Запрос товаров для Mini App от %s", request.remote)
     try:
         with sqlite3.connect("cache.db") as conn:
             conn.row_factory = sqlite3.Row
@@ -19,19 +20,19 @@ async def get_products(request: web.Request) -> Response:
             if row and row['content']:
                 try:
                     products = json.loads(row['content'])
-                    logger.info("Загружено %d товаров для Mini App", len(products))
+                    logger.info("✅ Загружено %d товаров для Mini App", len(products))
                     return web.json_response({
                         "success": True,
                         "products": products,
                         "count": len(products)
                     })
                 except json.JSONDecodeError as e:
-                    logger.error("Ошибка парсинга JSON товаров: %s", e)
+                    logger.error("❌ Ошибка парсинга JSON товаров: %s", e)
                     return web.json_response(
                         {"success": False, "error": "Invalid products data"},
                         status=500
                     )
-            logger.warning("Товары не найдены в кэше")
+            logger.warning("⚠️ Товары не найдены в кэше. Проверьте, что бот запущен и каталог загружен.")
             return web.json_response({
                 "success": False,
                 "error": "Products not found. Please wait for catalog to load.",
@@ -39,7 +40,7 @@ async def get_products(request: web.Request) -> Response:
                 "count": 0
             })
     except Exception as e:
-        logger.error("Ошибка получения товаров для Mini App: %s", e, exc_info=True)
+        logger.error("❌ Ошибка получения товаров для Mini App: %s", e, exc_info=True)
         return web.json_response(
             {"success": False, "error": str(e), "products": [], "count": 0},
             status=500
@@ -401,16 +402,20 @@ async def search_products_api(request: web.Request) -> Response:
 
 async def ai_chat_api(request: web.Request) -> Response:
     """Handle AI chat messages."""
+    logger.info("Запрос AI чата от %s", request.remote)
     try:
         data = await request.json()
         user_id = data.get('user_id')
         message = data.get('message', '').strip()
         
         if not user_id or not message:
+            logger.warning("⚠️ AI чат: отсутствует user_id или message")
             return web.json_response(
                 {"success": False, "error": "user_id and message required"},
                 status=400
             )
+        
+        logger.info("AI чат: user_id=%s, message=%s", user_id, message[:50])
         
         # Получаем товары
         with sqlite3.connect("cache.db") as conn:
@@ -422,7 +427,10 @@ async def ai_chat_api(request: web.Request) -> Response:
             if row:
                 products = json.loads(row['content'])
         
+        logger.info("AI чат: загружено %d товаров", len(products))
+        
         if not products:
+            logger.warning("⚠️ AI чат: товары не найдены в кэше")
             return web.json_response({
                 "success": True,
                 "reply": "Извините, каталог товаров еще не загружен. Попробуйте позже.",
@@ -435,10 +443,12 @@ async def ai_chat_api(request: web.Request) -> Response:
         import aiohttp
         from services.ai_service import generate_maxim_reply
         
+        logger.info("AI чат: генерация ответа через AI service...")
         async with aiohttp.ClientSession() as session:
             reply_text, recommended_products, product_ids, order_buttons_mode = await generate_maxim_reply(
                 message, session, products
             )
+        logger.info("✅ AI чат: ответ сгенерирован, рекомендовано товаров: %d", len(recommended_products) if recommended_products else 0)
         
         # Преобразуем recommended_products в список словарей для JSON
         recommended_list = []
@@ -637,6 +647,10 @@ async def error_middleware(request: web.Request, handler):
             }
         )
     
+    # Логируем запросы к API
+    if request.path.startswith('/api/'):
+        logger.debug("API запрос: %s %s", request.method, request.path)
+    
     try:
         response = await handler(request)
         # Добавляем CORS заголовки
@@ -654,11 +668,15 @@ async def error_middleware(request: web.Request, handler):
         
         return response
     except web.HTTPException as ex:
-        # Для HTTP исключений возвращаем JSON
+        # Для HTTP исключений возвращаем JSON для API запросов
         if request.path.startswith('/api/'):
+            logger.warning("HTTP %d для API endpoint: %s %s", ex.status, request.method, request.path)
+            error_msg = ex.reason or f"Endpoint not found: {request.method} {request.path}"
+            if ex.status == 404:
+                error_msg = f"API endpoint not found: {request.method} {request.path}"
             return web.json_response({
                 "success": False,
-                "error": ex.reason or "Not found"
+                "error": error_msg
             }, status=ex.status)
         raise
     except Exception as ex:
@@ -670,18 +688,6 @@ async def error_middleware(request: web.Request, handler):
                 "error": str(ex)
             }, status=500)
         raise
-
-
-async def handle_404(request: web.Request) -> Response:
-    """Handle 404 errors for API requests."""
-    if request.path.startswith('/api/'):
-        logger.warning("404 для API endpoint: %s %s", request.method, request.path)
-        return web.json_response({
-            "success": False,
-            "error": f"API endpoint not found: {request.method} {request.path}"
-        }, status=404)
-    # Для не-API запросов возвращаем стандартную 404
-    raise web.HTTPNotFound()
 
 
 def create_webapp_app() -> web.Application:
@@ -715,9 +721,6 @@ def create_webapp_app() -> web.Application:
     app.add_routes([
         web.get("/", serve_index),
     ])
-    
-    # Обработчик для всех остальных маршрутов (404)
-    app.router.add_route('*', '/{path:.*}', handle_404)
     
     return app
 
