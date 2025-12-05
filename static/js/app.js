@@ -880,14 +880,27 @@ async function sendAIMessage() {
             // Show recommended products if any
             if (data.recommended_products && data.recommended_products.length > 0) {
                 const productsHtml = data.recommended_products.map(p => {
-                    const productId = p.id || p.product_id || '';
+                    const productId = String(p.id || p.product_id || '');
                     const productName = p.name || 'Товар';
                     const productPrice = p.price || '?';
-                    return `<div class="ai-product-suggestion" onclick="showProductDetailsById('${productId}')">
+                    // Экранируем productId для использования в onclick
+                    const safeProductId = escapeHtml(productId);
+                    return `<div class="ai-product-suggestion" onclick="showProductDetailsById('${safeProductId}')" style="cursor: pointer; padding: 10px; margin: 5px 0; background: #f0f0f0; border-radius: 5px;">
                         <strong>${escapeHtml(productName)}</strong> - ${productPrice} ₽
                     </div>`;
                 }).join('');
-                addAIMessage('assistant', '<div class="ai-products"><b>Рекомендую:</b><br>' + productsHtml + '</div>', false, true);
+                addAIMessage('assistant', '<div class="ai-products"><b>🛒 Рекомендую:</b><br>' + productsHtml + '</div>', false, true);
+            }
+            
+            // Show order buttons if in order mode
+            if (data.order_buttons_mode) {
+                const orderButtonsHtml = `
+                    <div class="ai-order-buttons" style="margin-top: 10px;">
+                        <button class="btn-primary" onclick="showTab('cart'); setTimeout(() => openCheckoutModal(), 300);" style="margin: 5px; padding: 10px;">🚀 Оформить заказ</button>
+                        <button class="btn-secondary" onclick="showTab('cart');" style="margin: 5px; padding: 10px;">🛒 Корзина</button>
+                    </div>
+                `;
+                addAIMessage('assistant', orderButtonsHtml, false, true);
             }
         } else {
             addAIMessage('assistant', 'Извините, произошла ошибка: ' + (data.error || 'Неизвестная ошибка') + '. Попробуйте еще раз.');
@@ -926,34 +939,55 @@ function addAIMessage(role, text, isTyping = false, isHtml = false) {
 }
 
 // Show product by ID
-function showProductDetailsById(productId) {
+async function showProductDetailsById(productId) {
     if (!productId) {
-        tg.showAlert('Ошибка: ID товара не указан');
+        const errorMsg = 'Ошибка: ID товара не указан';
+        if (tg && tg.showAlert) {
+            tg.showAlert(errorMsg);
+        } else {
+            alert(errorMsg);
+        }
         return;
     }
     
     // Ищем товар в загруженных
-    let product = state.products.find(p => p.id === String(productId));
+    let product = state.products.find(p => String(p.id) === String(productId));
     
     // Если не найден, загружаем из API
     if (!product) {
-        fetch(`/api/products`)
-            .then(res => safeJsonParse(res))
-            .then(data => {
-                if (data.success) {
-                    state.products = data.products;
-                    product = state.products.find(p => p.id === String(productId));
-                    if (product) {
-                        showTab('catalog');
-                        setTimeout(() => showProductDetails(product), 100);
+        try {
+            const res = await fetch(`/api/products`);
+            const data = await safeJsonParse(res);
+            if (data.success && data.products) {
+                state.products = data.products;
+                product = state.products.find(p => String(p.id) === String(productId));
+                if (product) {
+                    showTab('catalog');
+                    setTimeout(() => showProductDetails(product), 100);
+                } else {
+                    const errorMsg = 'Товар не найден';
+                    if (tg && tg.showAlert) {
+                        tg.showAlert(errorMsg);
                     } else {
-                        tg.showAlert('Товар не найден');
+                        alert(errorMsg);
                     }
                 }
-            })
-            .catch(err => {
-                tg.showAlert('Ошибка загрузки товара: ' + err.message);
-            });
+            } else {
+                const errorMsg = 'Ошибка загрузки товаров: ' + (data.error || 'Неизвестная ошибка');
+                if (tg && tg.showAlert) {
+                    tg.showAlert(errorMsg);
+                } else {
+                    alert(errorMsg);
+                }
+            }
+        } catch (err) {
+            const errorMsg = 'Ошибка загрузки товара: ' + err.message;
+            if (tg && tg.showAlert) {
+                tg.showAlert(errorMsg);
+            } else {
+                alert(errorMsg);
+            }
+        }
     } else {
         showTab('catalog');
         setTimeout(() => showProductDetails(product), 100);
@@ -974,8 +1008,10 @@ function showInfoSection(section) {
         else if (section === 'orders') loadOrders();
         else if (section === 'subscription') loadSubscription();
         else if (section === 'order-conditions') loadOrderConditions();
+        else if (section === 'how-to-order') loadHowToOrder();
         else if (section === 'delivery') loadDelivery();
         else if (section === 'contacts') loadContacts();
+        else if (section === 'promotions') loadPromotions();
         else if (section === 'referral') loadReferral();
     }
 }
@@ -1009,14 +1045,54 @@ function loadOrderConditions() {
     container.innerHTML = `
         <h2>📋 Условия заказа</h2>
         <div class="info-text">
-            <p><b>🛒 Как заказать товар?</b></p>
-            <p>1. Через сайт: <a href="https://www.эколайф.рус">www.эколайф.рус</a></p>
-            <p>2. Скачать приложение: <a href="https://econext.uds.app/c/join?ref=cvaw5707">econext.uds.app</a></p>
-            <p>3. Прямо в этом боте: выберите товар, добавьте в корзину и оформите заказ</p>
-            <p>4. Написать или позвонить:</p>
-            <p>   • Telegram: @MaxChe1981</p>
-            <p>   • Телефон: +7 921 252-32-95</p>
+            <p><b>📦 Способы оплаты:</b></p>
+            <p>• Наличными при получении</p>
+            <p>• Банковской картой онлайн</p>
+            <p>• Переводом на карту</p>
+            <p><b>⏱️ Сроки обработки заказа:</b></p>
+            <p>• Обычно в течение 15 минут после оформления</p>
+            <p>• Подтверждение заказа по телефону или Telegram</p>
+            <p><b>🔄 Возврат и обмен:</b></p>
+            <p>• Возврат в течение 14 дней с момента покупки</p>
+            <p>• Товар должен быть в оригинальной упаковке</p>
+        </div>
+    `;
+}
+
+function loadHowToOrder() {
+    const container = document.getElementById('how-to-order-content');
+    container.innerHTML = `
+        <h2>📋 Как заказать товар?</h2>
+        <div class="info-text">
+            <p><b>🔹 1. Через сайт:</b></p>
+            <p>• Сайт: <a href="https://www.эколайф.рус" target="_blank">www.эколайф.рус</a></p>
+            <p><b>🔹 2. Скачать приложение:</b></p>
+            <p>• Приложение: <a href="https://econext.uds.app/c/join?ref=cvaw5707" target="_blank">econext.uds.app</a></p>
+            <p><b>🔹 3. Прямо в этом боте:</b></p>
+            <p>• Откройте 🛍️ Каталог</p>
+            <p>• Выберите товар и нажмите '➕ В корзину'</p>
+            <p>• Перейдите в 🛒 Корзина</p>
+            <p>• Оформите заказ</p>
+            <p><b>🔹 4. Написать или позвонить:</b></p>
+            <p>• Telegram: <a href="https://t.me/MaxChe1981" target="_blank">@MaxChe1981</a></p>
+            <p>• Телефон: <b>+7 921 252-32-95</b></p>
             <p><i>⏱️ Я свяжусь с Вами в течение 15 минут для подтверждения заказа!</i></p>
+        </div>
+    `;
+}
+
+function loadPromotions() {
+    const container = document.getElementById('promotions-content');
+    container.innerHTML = `
+        <h2>🎁 Акции от Econext</h2>
+        <div class="info-text">
+            <p><b>🔥 Лови горячие предложения и скидки на микрофибру!</b></p>
+            <p><b>📱 Скачай наше приложение и получи персональную скидку:</b></p>
+            <p><a href="https://econext.uds.app/c/join?ref=cvaw5707" target="_blank" class="btn-primary" style="display: inline-block; padding: 10px 20px; margin: 10px 0;">👉 Скачать приложение</a></p>
+            <p><b>💎 Бонус новичка:</b></p>
+            <p>Промокод <b>START10</b> на 10% скидку!</p>
+            <p><b>🎁 Бесплатная доставка:</b></p>
+            <p>При заказе от 3000 ₽ доставка бесплатная!</p>
         </div>
     `;
 }
@@ -1316,7 +1392,19 @@ window.changePage = changePage;
 window.closeCheckoutModal = closeCheckoutModal;
 window.showInfoSection = showInfoSection;
 window.hideInfoSection = hideInfoSection;
+// Export functions to window for HTML onclick handlers
 window.showProductDetailsById = showProductDetailsById;
+window.showAllProducts = showAllProducts;
+window.searchProducts = searchProducts;
+window.showInfoSection = showInfoSection;
+window.hideInfoSection = hideInfoSection;
+window.addToCart = addToCart;
+window.removeFromCart = removeFromCart;
+window.updateQuantity = updateQuantity;
+window.openCheckoutModal = openCheckoutModal;
+window.closeCheckoutModal = closeCheckoutModal;
+window.showTab = showTab;
+window.showCategories = showCategories;
 window.toggleSubscription = toggleSubscription;
 window.showAllProducts = showAllProducts;
 window.searchProducts = searchProducts;

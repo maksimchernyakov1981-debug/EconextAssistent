@@ -444,11 +444,30 @@ async def ai_chat_api(request: web.Request) -> Response:
         from services.ai_service import generate_maxim_reply
         
         logger.info("AI чат: генерация ответа через AI service...")
-        async with aiohttp.ClientSession() as session:
-            reply_text, recommended_products, product_ids, order_buttons_mode = await generate_maxim_reply(
-                message, session, products
-            )
-        logger.info("✅ AI чат: ответ сгенерирован, рекомендовано товаров: %d", len(recommended_products) if recommended_products else 0)
+        try:
+            async with aiohttp.ClientSession() as session:
+                reply_text, recommended_products, product_ids, order_buttons_mode = await generate_maxim_reply(
+                    message, session, products
+                )
+            logger.info("✅ AI чат: ответ сгенерирован, рекомендовано товаров: %d", len(recommended_products) if recommended_products else 0)
+        except Exception as ai_error:
+            logger.error("❌ Ошибка генерации ответа ИИ: %s", ai_error, exc_info=True)
+            error_msg = str(ai_error)
+            # Более понятное сообщение для пользователя
+            user_friendly_msg = "Извините, произошла ошибка при генерации ответа. Попробуйте позже или переформулируйте вопрос."
+            if "timeout" in error_msg.lower() or "timed out" in error_msg.lower():
+                user_friendly_msg = "Извините, ответ занимает слишком много времени. Попробуйте задать вопрос короче или позже."
+            elif "api" in error_msg.lower() or "key" in error_msg.lower():
+                user_friendly_msg = "Извините, временные проблемы с сервисом. Попробуйте позже."
+            
+            return web.json_response({
+                "success": False,
+                "error": error_msg,
+                "reply": user_friendly_msg,
+                "recommended_products": [],
+                "product_ids": [],
+                "order_buttons_mode": False
+            }, status=500)
         
         # Преобразуем recommended_products в список словарей для JSON
         recommended_list = []

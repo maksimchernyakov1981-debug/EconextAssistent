@@ -124,8 +124,14 @@
                 <button class="info-menu-item" onclick="showInfoSection('order-conditions')">
                     📋 Условия заказа
                 </button>
+                <button class="info-menu-item" onclick="showInfoSection('how-to-order')">
+                    📋 Как заказать
+                </button>
                 <button class="info-menu-item" onclick="showInfoSection('delivery')">
                     🚚 Доставка
+                </button>
+                <button class="info-menu-item" onclick="showInfoSection('promotions')">
+                    🎁 Акции
                 </button>
                 <button class="info-menu-item" onclick="showInfoSection('contacts')">
                     📞 Контакты
@@ -155,6 +161,18 @@
             <div id="order-conditions-section" class="info-section hidden">
                 <button class="back-button" onclick="hideInfoSection()">⬅️ Назад</button>
                 <div id="order-conditions-content"></div>
+            </div>
+            
+            <!-- How to Order Section -->
+            <div id="how-to-order-section" class="info-section hidden">
+                <button class="back-button" onclick="hideInfoSection()">⬅️ Назад</button>
+                <div id="how-to-order-content"></div>
+            </div>
+            
+            <!-- Promotions Section -->
+            <div id="promotions-section" class="info-section hidden">
+                <button class="back-button" onclick="hideInfoSection()">⬅️ Назад</button>
+                <div id="promotions-content"></div>
             </div>
             
             <!-- Delivery Section -->
