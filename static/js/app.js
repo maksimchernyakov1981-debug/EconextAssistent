@@ -1,7 +1,51 @@
 // Telegram WebApp API
-const tg = window.Telegram.WebApp;
-tg.ready();
-tg.expand();
+const tg = window.Telegram?.WebApp;
+if (tg) {
+    tg.ready();
+    tg.expand();
+} else {
+    console.warn('Telegram WebApp API не доступен. Работаем в режиме разработки.');
+}
+
+// Helper function to get user ID from Telegram WebApp
+function getUserId() {
+    if (!tg) {
+        console.warn('Telegram WebApp API не доступен');
+        return null;
+    }
+    
+    // Метод 1: initDataUnsafe (быстрый, но может быть недоступен)
+    if (tg.initDataUnsafe?.user?.id) {
+        return tg.initDataUnsafe.user.id;
+    }
+    
+    // Метод 2: Парсинг initData (более надежный)
+    if (tg.initData) {
+        try {
+            const params = new URLSearchParams(tg.initData);
+            const userParam = params.get('user');
+            if (userParam) {
+                const user = JSON.parse(decodeURIComponent(userParam));
+                if (user?.id) {
+                    return user.id;
+                }
+            }
+        } catch (e) {
+            console.error('Ошибка парсинга initData:', e);
+        }
+    }
+    
+    // Метод 3: Попытка получить из query параметров (для тестирования)
+    const urlParams = new URLSearchParams(window.location.search);
+    const testUserId = urlParams.get('test_user_id');
+    if (testUserId) {
+        console.warn('Используется тестовый user_id из URL параметров');
+        return parseInt(testUserId);
+    }
+    
+    console.warn('Не удалось определить user_id');
+    return null;
+}
 
 // State
 let state = {
@@ -34,6 +78,16 @@ async function safeJsonParse(response) {
 
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
+    // Отладочная информация
+    console.log('🚀 Инициализация Mini App...');
+    console.log('Telegram WebApp доступен:', !!tg);
+    if (tg) {
+        console.log('initDataUnsafe:', tg.initDataUnsafe);
+        console.log('initData:', tg.initData ? 'доступен' : 'недоступен');
+    }
+    const userId = getUserId();
+    console.log('User ID:', userId || 'не определен');
+    
     await loadData();
     setupEventListeners();
     updateCartCount();
@@ -70,26 +124,38 @@ async function loadData() {
         }
         
         // Обрабатываем результаты
-        if (productsData.success && productsData.products) {
+        if (productsData.success && productsData.products && productsData.products.length > 0) {
             state.products = productsData.products;
-            console.log(`Загружено ${state.products.length} товаров`);
-        } else {
-            console.warn('Товары не загружены:', productsData.error);
-            state.products = productsData.products || [];
-            if (productsData.error) {
-                showError('Товары не загружены: ' + productsData.error);
+            console.log(`✅ Загружено ${state.products.length} товаров`);
+            // Показываем категории, если товары загружены
+            if (categoriesData.success && categoriesData.categories && categoriesData.categories.length > 0) {
+                state.categories = categoriesData.categories;
+                renderCategories();
+                console.log(`✅ Загружено ${state.categories.length} категорий`);
+            } else {
+                console.warn('⚠️ Категории не загружены:', categoriesData.error);
+                state.categories = categoriesData.categories || [];
             }
-        }
-        
-        if (categoriesData.success && categoriesData.categories) {
-            state.categories = categoriesData.categories;
-            renderCategories();
-            console.log(`Загружено ${state.categories.length} категорий`);
         } else {
-            console.warn('Категории не загружены:', categoriesData.error);
+            console.error('❌ Товары не загружены:', productsData.error || 'Неизвестная ошибка');
+            state.products = productsData.products || [];
             state.categories = categoriesData.categories || [];
-            if (categoriesData.error && !productsData.error) {
-                showError('Категории не загружены: ' + categoriesData.error);
+            
+            // Показываем понятное сообщение пользователю
+            const errorMsg = productsData.error || 'Каталог товаров еще не загружен. Пожалуйста, подождите немного и обновите страницу.';
+            showError(errorMsg);
+            
+            // Показываем пустое состояние
+            const catalogTab = document.getElementById('catalog-tab');
+            if (catalogTab) {
+                const emptyState = document.createElement('div');
+                emptyState.className = 'empty-state';
+                emptyState.innerHTML = `
+                    <p>📦 Каталог товаров загружается...</p>
+                    <p class="text-muted">${errorMsg}</p>
+                    <button class="btn-primary" onclick="location.reload()">🔄 Обновить страницу</button>
+                `;
+                catalogTab.appendChild(emptyState);
             }
         }
         
@@ -104,8 +170,11 @@ async function loadData() {
 
 // Load cart
 async function loadCart() {
-    const userId = tg.initDataUnsafe?.user?.id;
-    if (!userId) return;
+    const userId = getUserId();
+    if (!userId) {
+        console.warn('Не удалось загрузить корзину: user_id не определен');
+        return;
+    }
     
     try {
         const res = await fetch(`/api/cart?user_id=${userId}`);
@@ -114,6 +183,8 @@ async function loadCart() {
             state.cart = data.cart;
             renderCart();
             updateCartCount();
+        } else {
+            console.warn('Ошибка загрузки корзины:', data.error);
         }
     } catch (error) {
         console.error('Ошибка загрузки корзины:', error);
@@ -206,7 +277,17 @@ function showTab(tabName) {
 // Render categories
 function renderCategories() {
     const container = document.getElementById('categories-list');
+    if (!container) {
+        console.error('Контейнер categories-list не найден');
+        return;
+    }
+    
     container.innerHTML = '';
+    
+    if (state.categories.length === 0) {
+        container.innerHTML = '<div class="empty-state"><p>Категории не найдены</p></div>';
+        return;
+    }
     
     state.categories.forEach(category => {
         const card = document.createElement('div');
@@ -218,6 +299,8 @@ function renderCategories() {
         card.addEventListener('click', () => showProducts(category.id));
         container.appendChild(card);
     });
+    
+    console.log(`✅ Отображено ${state.categories.length} категорий`);
 }
 
 // Show products
@@ -326,9 +409,13 @@ function showProductDetails(product) {
 
 // Add to cart
 async function addToCart(productId) {
-    const userId = tg.initDataUnsafe?.user?.id;
+    const userId = getUserId();
     if (!userId) {
-        tg.showAlert('Ошибка: не удалось определить пользователя');
+        if (tg && tg.showAlert) {
+            tg.showAlert('Ошибка: не удалось определить пользователя');
+        } else {
+            alert('Ошибка: не удалось определить пользователя');
+        }
         return;
     }
     
@@ -361,7 +448,7 @@ async function addToCart(productId) {
 
 // Remove from cart
 async function removeFromCart(productId) {
-    const userId = tg.initDataUnsafe?.user?.id;
+    const userId = getUserId();
     if (!userId) return;
     
     try {
@@ -390,7 +477,7 @@ async function updateQuantity(productId, quantity) {
         return;
     }
     
-    const userId = tg.initDataUnsafe?.user?.id;
+    const userId = getUserId();
     if (!userId) return;
     
     try {
@@ -512,9 +599,14 @@ function closeCheckoutModal() {
 // Handle checkout
 async function handleCheckout(e) {
     e.preventDefault();
-    const userId = tg.initDataUnsafe?.user?.id;
+    const userId = getUserId();
     if (!userId) {
-        tg.showAlert('Ошибка: не удалось определить пользователя');
+        const errorMsg = 'Ошибка: не удалось определить пользователя';
+        if (tg && tg.showAlert) {
+            tg.showAlert(errorMsg);
+        } else {
+            alert(errorMsg);
+        }
         return;
     }
     
@@ -631,6 +723,11 @@ async function searchProducts() {
 
 // Show all products
 function showAllProducts() {
+    if (state.products.length === 0) {
+        showError('Товары не загружены. Пожалуйста, обновите страницу.');
+        return;
+    }
+    
     document.getElementById('categories-section').classList.add('hidden');
     document.getElementById('products-section').classList.add('hidden');
     document.getElementById('all-products-section').classList.remove('hidden');
@@ -640,10 +737,15 @@ function showAllProducts() {
     state.currentProduct = null;
     
     const container = document.getElementById('all-products-list');
+    if (!container) {
+        console.error('Контейнер all-products-list не найден');
+        return;
+    }
+    
     container.innerHTML = '';
     
     if (state.products.length === 0) {
-        container.innerHTML = '<div class="empty-state"><p>Товары не загружены</p></div>';
+        container.innerHTML = '<div class="empty-state"><p>Товары не найдены</p></div>';
         return;
     }
     
@@ -651,6 +753,8 @@ function showAllProducts() {
         const card = createProductCard(product);
         container.appendChild(card);
     });
+    
+    console.log(`✅ Отображено ${state.products.length} товаров`);
 }
 
 // AI Chat functions
@@ -661,9 +765,14 @@ async function sendAIMessage() {
     const message = input.value.trim();
     if (!message) return;
     
-    const userId = tg.initDataUnsafe?.user?.id;
+    const userId = getUserId();
     if (!userId) {
-        tg.showAlert('Ошибка: не удалось определить пользователя');
+        const errorMsg = 'Ошибка: не удалось определить пользователя. Убедитесь, что Mini App открыт из Telegram.';
+        if (tg && tg.showAlert) {
+            tg.showAlert(errorMsg);
+        } else {
+            alert(errorMsg);
+        }
         return;
     }
     
@@ -882,10 +991,12 @@ function loadReferral() {
 }
 
 async function loadOrders() {
-    const userId = tg.initDataUnsafe?.user?.id;
+    const userId = getUserId();
     if (!userId) {
         const container = document.getElementById('orders-list');
-        container.innerHTML = '<div class="empty-state"><p>Не удалось определить пользователя</p></div>';
+        if (container) {
+            container.innerHTML = '<div class="empty-state"><p>Не удалось определить пользователя. Убедитесь, что Mini App открыт из Telegram.</p></div>';
+        }
         return;
     }
     
@@ -947,7 +1058,7 @@ async function loadOrders() {
 }
 
 async function loadSubscription() {
-    const userId = tg.initDataUnsafe?.user?.id;
+    const userId = getUserId();
     if (!userId) return;
     
     try {
@@ -972,12 +1083,27 @@ async function loadSubscription() {
 }
 
 async function toggleSubscription() {
-    const userId = tg.initDataUnsafe?.user?.id;
-    const chatId = tg.initDataUnsafe?.chat?.id;
-    const username = tg.initDataUnsafe?.user?.username || '';
+    const userId = getUserId();
+    const chatId = tg?.initDataUnsafe?.chat?.id || tg?.initData ? (() => {
+        try {
+            const params = new URLSearchParams(tg.initData);
+            const chatParam = params.get('chat');
+            if (chatParam) {
+                const chat = JSON.parse(decodeURIComponent(chatParam));
+                return chat?.id;
+            }
+        } catch (e) {}
+        return null;
+    })() : null;
+    const username = tg?.initDataUnsafe?.user?.username || '';
     
     if (!userId || !chatId) {
-        tg.showAlert('Ошибка: не удалось определить пользователя');
+        const errorMsg = 'Ошибка: не удалось определить пользователя';
+        if (tg && tg.showAlert) {
+            tg.showAlert(errorMsg);
+        } else {
+            alert(errorMsg);
+        }
         return;
     }
     
@@ -1010,9 +1136,14 @@ async function toggleSubscription() {
 
 async function submitWholesale(e) {
     e.preventDefault();
-    const userId = tg.initDataUnsafe?.user?.id;
+    const userId = getUserId();
     if (!userId) {
-        tg.showAlert('Ошибка: не удалось определить пользователя');
+        const errorMsg = 'Ошибка: не удалось определить пользователя';
+        if (tg && tg.showAlert) {
+            tg.showAlert(errorMsg);
+        } else {
+            alert(errorMsg);
+        }
         return;
     }
     
