@@ -118,8 +118,11 @@ function showTab(tabName) {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
     
-    document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
-    document.getElementById(`${tabName}-tab`).classList.add('active');
+    const tabButton = document.querySelector(`[data-tab="${tabName}"]`);
+    const tabContent = document.getElementById(`${tabName}-tab`);
+    
+    if (tabButton) tabButton.classList.add('active');
+    if (tabContent) tabContent.classList.add('active');
     
     if (tabName === 'cart') {
         loadCart();
@@ -127,11 +130,24 @@ function showTab(tabName) {
         // Initialize AI chat
         const messagesContainer = document.getElementById('ai-messages');
         if (messagesContainer && messagesContainer.children.length === 0) {
-            addAIMessage('assistant', '👋 Привет! Я Максим, твой ИИ-консультант по микрофибре. Задай мне любой вопрос!');
+            addAIMessage('assistant', '👋 Привет! Я Максим, твой ИИ-консультант по микрофибре. Задай мне любой вопрос о товарах, уборке или использовании микрофибры!');
         }
+        // Фокус на поле ввода
+        setTimeout(() => {
+            const aiInput = document.getElementById('ai-input');
+            if (aiInput) aiInput.focus();
+        }, 100);
     } else if (tabName === 'info') {
         // Reset info section
         hideInfoSection();
+    } else if (tabName === 'catalog') {
+        // Убеждаемся что категории видны
+        if (state.categories.length > 0 && !document.getElementById('categories-section').classList.contains('hidden')) {
+            // Все ок
+        } else if (state.categories.length === 0) {
+            // Перезагружаем данные
+            loadData();
+        }
     }
 }
 
@@ -180,11 +196,23 @@ function showCategories() {
 // Render products
 function renderProducts() {
     const container = document.getElementById('products-list');
+    if (!container) return;
+    
     container.innerHTML = '';
+    
+    if (!state.products || state.products.length === 0) {
+        container.innerHTML = '<div class="empty-state"><p>Товары не загружены</p></div>';
+        return;
+    }
     
     const categoryProducts = state.products.filter(p => 
         p.categoryId === state.currentCategory
     );
+    
+    if (categoryProducts.length === 0) {
+        container.innerHTML = '<div class="empty-state"><p>В этой категории пока нет товаров</p></div>';
+        return;
+    }
     
     const start = (state.currentPage - 1) * state.itemsPerPage;
     const end = start + state.itemsPerPage;
@@ -212,7 +240,7 @@ function createProductCard(product) {
         <div class="product-info">
             <div class="product-name">${escapeHtml(product.name)}</div>
             <div>
-                <span class="product-price">${product.price} ₽</span>
+                <span class="product-price">${product.price} руб.</span>
                 ${product.oldprice ? `<span class="product-old-price">${product.oldprice} ₽</span>` : ''}
             </div>
         </div>
@@ -590,6 +618,8 @@ async function sendAIMessage() {
     // Add user message
     addAIMessage('user', message);
     input.value = '';
+    input.disabled = true;
+    document.getElementById('ai-send-btn').disabled = true;
     
     // Show typing indicator
     const typingId = addAIMessage('assistant', '🤔 Думаю...', true);
@@ -611,36 +641,47 @@ async function sendAIMessage() {
         if (typingEl) typingEl.remove();
         
         if (data.success) {
-            addAIMessage('assistant', data.reply);
+            // Парсим HTML ответ от ИИ
+            addAIMessage('assistant', data.reply, false, true);
             
             // Show recommended products if any
             if (data.recommended_products && data.recommended_products.length > 0) {
-                const productsHtml = data.recommended_products.map(p => 
-                    `<div class="ai-product-suggestion" onclick="showProductDetailsById('${p.id}')">
-                        <strong>${escapeHtml(p.name)}</strong> - ${p.price} ₽
-                    </div>`
-                ).join('');
-                addAIMessage('assistant', '<div class="ai-products">' + productsHtml + '</div>', false, true);
+                const productsHtml = data.recommended_products.map(p => {
+                    const productId = p.id || p.product_id || '';
+                    const productName = p.name || 'Товар';
+                    const productPrice = p.price || '?';
+                    return `<div class="ai-product-suggestion" onclick="showProductDetailsById('${productId}')">
+                        <strong>${escapeHtml(productName)}</strong> - ${productPrice} ₽
+                    </div>`;
+                }).join('');
+                addAIMessage('assistant', '<div class="ai-products"><b>Рекомендую:</b><br>' + productsHtml + '</div>', false, true);
             }
         } else {
-            addAIMessage('assistant', 'Извините, произошла ошибка. Попробуйте еще раз.');
+            addAIMessage('assistant', 'Извините, произошла ошибка: ' + (data.error || 'Неизвестная ошибка') + '. Попробуйте еще раз.');
         }
     } catch (error) {
         const typingEl = document.getElementById(`ai-msg-${typingId}`);
         if (typingEl) typingEl.remove();
-        addAIMessage('assistant', 'Ошибка соединения. Проверьте интернет.');
+        addAIMessage('assistant', 'Ошибка соединения: ' + error.message + '. Проверьте интернет.');
+    } finally {
+        input.disabled = false;
+        document.getElementById('ai-send-btn').disabled = false;
+        input.focus();
     }
 }
 
 function addAIMessage(role, text, isTyping = false, isHtml = false) {
     const messagesContainer = document.getElementById('ai-messages');
-    const messageId = Date.now();
+    if (!messagesContainer) return Date.now();
+    
+    const messageId = Date.now() + Math.random();
     const messageEl = document.createElement('div');
     messageEl.id = `ai-msg-${messageId}`;
     messageEl.className = `ai-message ai-message-${role}`;
     
     if (isHtml) {
-        messageEl.innerHTML = text;
+        // Безопасная обработка HTML
+        messageEl.innerHTML = text.replace(/\n/g, '<br>');
     } else {
         messageEl.textContent = text;
     }
@@ -653,10 +694,36 @@ function addAIMessage(role, text, isTyping = false, isHtml = false) {
 
 // Show product by ID
 function showProductDetailsById(productId) {
-    const product = state.products.find(p => p.id === productId);
-    if (product) {
+    if (!productId) {
+        tg.showAlert('Ошибка: ID товара не указан');
+        return;
+    }
+    
+    // Ищем товар в загруженных
+    let product = state.products.find(p => p.id === String(productId));
+    
+    // Если не найден, загружаем из API
+    if (!product) {
+        fetch(`/api/products`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    state.products = data.products;
+                    product = state.products.find(p => p.id === String(productId));
+                    if (product) {
+                        showTab('catalog');
+                        setTimeout(() => showProductDetails(product), 100);
+                    } else {
+                        tg.showAlert('Товар не найден');
+                    }
+                }
+            })
+            .catch(err => {
+                tg.showAlert('Ошибка загрузки товара: ' + err.message);
+            });
+    } else {
         showTab('catalog');
-        showProductDetails(product);
+        setTimeout(() => showProductDetails(product), 100);
     }
 }
 
@@ -764,34 +831,66 @@ function loadReferral() {
 
 async function loadOrders() {
     const userId = tg.initDataUnsafe?.user?.id;
-    if (!userId) return;
+    if (!userId) {
+        const container = document.getElementById('orders-list');
+        container.innerHTML = '<div class="empty-state"><p>Не удалось определить пользователя</p></div>';
+        return;
+    }
     
+    showLoading(true);
     try {
         const res = await fetch(`/api/orders?user_id=${userId}`);
         const data = await res.json();
         
         if (data.success) {
             const container = document.getElementById('orders-list');
+            if (!container) return;
+            
             if (data.orders.length === 0) {
-                container.innerHTML = '<div class="empty-state"><p>У вас пока нет заказов</p></div>';
+                container.innerHTML = '<div class="empty-state"><p>📦 У вас пока нет заказов</p><p class="text-muted">Ваши заказы будут отображаться здесь</p></div>';
             } else {
-                container.innerHTML = data.orders.map(order => `
-                    <div class="order-item">
-                        <div class="order-header">
-                            <span><b>Заказ #${order.id}</b></span>
-                            <span class="order-status">${order.status}</span>
+                container.innerHTML = data.orders.map(order => {
+                    const orderData = order.order_data || {};
+                    const createdDate = order.created_at ? new Date(order.created_at).toLocaleDateString('ru-RU', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    }) : 'Дата не указана';
+                    
+                    return `
+                        <div class="order-item">
+                            <div class="order-header">
+                                <span><b>Заказ #${order.id}</b></span>
+                                <span class="order-status">${order.status || 'pending'}</span>
+                            </div>
+                            <div class="order-info">
+                                <p><b>Сумма:</b> ${(order.total_amount || 0).toFixed(2)} ₽</p>
+                                <p><b>Дата:</b> ${createdDate}</p>
+                                ${orderData.name ? `<p><b>Получатель:</b> ${escapeHtml(orderData.name)}</p>` : ''}
+                                ${orderData.phone ? `<p><b>Телефон:</b> ${escapeHtml(orderData.phone)}</p>` : ''}
+                                ${orderData.address ? `<p><b>Адрес:</b> ${escapeHtml(orderData.address)}</p>` : ''}
+                                ${orderData.shipping ? `<p><b>Доставка:</b> ${escapeHtml(orderData.shipping)}</p>` : ''}
+                            </div>
                         </div>
-                        <div class="order-info">
-                            <p>Сумма: ${order.total_amount.toFixed(2)} ₽</p>
-                            <p>Дата: ${new Date(order.created_at).toLocaleDateString('ru-RU')}</p>
-                            ${order.order_data.name ? `<p>Получатель: ${escapeHtml(order.order_data.name)}</p>` : ''}
-                        </div>
-                    </div>
-                `).join('');
+                    `;
+                }).join('');
+            }
+        } else {
+            const container = document.getElementById('orders-list');
+            if (container) {
+                container.innerHTML = '<div class="empty-state"><p>Ошибка загрузки заказов: ' + (data.error || 'Неизвестная ошибка') + '</p></div>';
             }
         }
     } catch (error) {
         console.error('Ошибка загрузки заказов:', error);
+        const container = document.getElementById('orders-list');
+        if (container) {
+            container.innerHTML = '<div class="empty-state"><p>Ошибка соединения: ' + error.message + '</p></div>';
+        }
+    } finally {
+        showLoading(false);
     }
 }
 

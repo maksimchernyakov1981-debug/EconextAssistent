@@ -39,19 +39,32 @@ async def get_categories(request: web.Request) -> Response:
             c = conn.cursor()
             c.execute("SELECT content FROM categories_cache WHERE key = 'categories'")
             row = c.fetchone()
-            if row:
-                categories = json.loads(row['content'])
-                return web.json_response(
-                    {"success": True, "categories": categories}
-                )
-            return web.json_response(
-                {"success": False, "error": "Categories not found"},
-                status=404
-            )
+            if row and row['content']:
+                try:
+                    categories = json.loads(row['content'])
+                    logger.info("Загружено %d категорий для Mini App", len(categories))
+                    return web.json_response({
+                        "success": True,
+                        "categories": categories,
+                        "count": len(categories)
+                    })
+                except json.JSONDecodeError as e:
+                    logger.error("Ошибка парсинга JSON категорий: %s", e)
+                    return web.json_response(
+                        {"success": False, "error": "Invalid categories data"},
+                        status=500
+                    )
+            logger.warning("Категории не найдены в кэше")
+            return web.json_response({
+                "success": False,
+                "error": "Categories not found. Please wait for catalog to load.",
+                "categories": [],
+                "count": 0
+            })
     except Exception as e:
-        logger.error("Ошибка получения категорий для Mini App: %s", e)
+        logger.error("Ошибка получения категорий для Mini App: %s", e, exc_info=True)
         return web.json_response(
-            {"success": False, "error": str(e)},
+            {"success": False, "error": str(e), "categories": [], "count": 0},
             status=500
         )
 
@@ -383,6 +396,15 @@ async def ai_chat_api(request: web.Request) -> Response:
             if row:
                 products = json.loads(row['content'])
         
+        if not products:
+            return web.json_response({
+                "success": True,
+                "reply": "Извините, каталог товаров еще не загружен. Попробуйте позже.",
+                "recommended_products": [],
+                "product_ids": [],
+                "order_buttons_mode": False
+            })
+        
         # Генерируем ответ через AI service
         import aiohttp
         from services.ai_service import generate_maxim_reply
@@ -392,15 +414,28 @@ async def ai_chat_api(request: web.Request) -> Response:
                 message, session, products
             )
         
+        # Преобразуем recommended_products в список словарей для JSON
+        recommended_list = []
+        if recommended_products:
+            for product in recommended_products[:5]:  # Ограничиваем до 5
+                if isinstance(product, dict):
+                    recommended_list.append({
+                        "id": product.get("id", ""),
+                        "name": product.get("name", ""),
+                        "price": product.get("price", ""),
+                        "description": product.get("description", ""),
+                        "pictures": product.get("pictures", [])
+                    })
+        
         return web.json_response({
             "success": True,
             "reply": reply_text,
-            "recommended_products": recommended_products[:5],  # Ограничиваем до 5
-            "product_ids": product_ids,
+            "recommended_products": recommended_list,
+            "product_ids": product_ids if product_ids else [],
             "order_buttons_mode": order_buttons_mode
         })
     except Exception as e:
-        logger.error("Ошибка AI чата: %s", e)
+        logger.error("Ошибка AI чата: %s", e, exc_info=True)
         return web.json_response(
             {"success": False, "error": str(e)},
             status=500
