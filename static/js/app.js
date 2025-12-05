@@ -9,14 +9,26 @@ if (tg) {
 
 // Helper function to get user ID from Telegram WebApp
 function getUserId() {
+    // Метод 0: Проверка доступности Telegram WebApp API
     if (!tg) {
-        console.warn('Telegram WebApp API не доступен');
-        return null;
+        console.warn('⚠️ Telegram WebApp API не доступен. Используем тестовый режим.');
+        // В режиме разработки используем тестовый ID
+        const urlParams = new URLSearchParams(window.location.search);
+        const testUserId = urlParams.get('test_user_id');
+        if (testUserId) {
+            console.warn('✅ Используется тестовый user_id из URL: ' + testUserId);
+            return parseInt(testUserId);
+        }
+        // Если нет тестового ID, используем дефолтный для разработки
+        console.warn('⚠️ Используется дефолтный тестовый user_id: 123456789');
+        return 123456789; // Дефолтный тестовый ID для разработки
     }
     
     // Метод 1: initDataUnsafe (быстрый, но может быть недоступен)
     if (tg.initDataUnsafe?.user?.id) {
-        return tg.initDataUnsafe.user.id;
+        const userId = tg.initDataUnsafe.user.id;
+        console.log('✅ User ID получен из initDataUnsafe:', userId);
+        return userId;
     }
     
     // Метод 2: Парсинг initData (более надежный)
@@ -27,11 +39,13 @@ function getUserId() {
             if (userParam) {
                 const user = JSON.parse(decodeURIComponent(userParam));
                 if (user?.id) {
-                    return user.id;
+                    const userId = user.id;
+                    console.log('✅ User ID получен из initData:', userId);
+                    return userId;
                 }
             }
         } catch (e) {
-            console.error('Ошибка парсинга initData:', e);
+            console.error('❌ Ошибка парсинга initData:', e);
         }
     }
     
@@ -39,12 +53,14 @@ function getUserId() {
     const urlParams = new URLSearchParams(window.location.search);
     const testUserId = urlParams.get('test_user_id');
     if (testUserId) {
-        console.warn('Используется тестовый user_id из URL параметров');
+        console.warn('✅ Используется тестовый user_id из URL параметров:', testUserId);
         return parseInt(testUserId);
     }
     
-    console.warn('Не удалось определить user_id');
-    return null;
+    // Метод 4: Для разработки используем дефолтный ID
+    console.warn('⚠️ Не удалось определить user_id из Telegram. Используется тестовый режим.');
+    console.warn('💡 Для тестирования добавьте ?test_user_id=YOUR_ID в URL');
+    return 123456789; // Дефолтный тестовый ID
 }
 
 // State
@@ -243,8 +259,9 @@ async function loadData() {
 // Load cart
 async function loadCart() {
     const userId = getUserId();
+    // В тестовом режиме userId всегда будет определен
     if (!userId) {
-        console.warn('Не удалось загрузить корзину: user_id не определен');
+        console.warn('⚠️ Не удалось загрузить корзину: user_id не определен (тестовый режим)');
         return;
     }
     
@@ -482,11 +499,14 @@ function showProductDetails(product) {
 // Add to cart
 async function addToCart(productId) {
     const userId = getUserId();
+    // getUserId() всегда возвращает значение (реальный или тестовый)
     if (!userId) {
+        console.error('❌ Критическая ошибка: userId не определен');
+        const errorMsg = 'Ошибка: не удалось определить пользователя. Попробуйте обновить страницу.';
         if (tg && tg.showAlert) {
-            tg.showAlert('Ошибка: не удалось определить пользователя');
+            tg.showAlert(errorMsg);
         } else {
-            alert('Ошибка: не удалось определить пользователя');
+            alert(errorMsg);
         }
         return;
     }
@@ -838,14 +858,13 @@ async function sendAIMessage() {
     if (!message) return;
     
     const userId = getUserId();
-    if (!userId) {
-        const errorMsg = 'Ошибка: не удалось определить пользователя. Убедитесь, что Mini App открыт из Telegram.';
-        if (tg && tg.showAlert) {
-            tg.showAlert(errorMsg);
-        } else {
-            alert(errorMsg);
+    
+    // Показываем предупреждение только если это не тестовый режим
+    if (!userId || userId === 123456789) {
+        const isTestMode = !tg || !tg.initData;
+        if (isTestMode) {
+            console.warn('⚠️ Работаем в тестовом режиме. Для продакшена откройте Mini App из Telegram.');
         }
-        return;
     }
     
     // Add user message
@@ -1140,10 +1159,12 @@ function loadReferral() {
 
 async function loadOrders() {
     const userId = getUserId();
+    // getUserId() всегда возвращает значение (реальный или тестовый)
     if (!userId) {
+        console.error('❌ Критическая ошибка: userId не определен');
         const container = document.getElementById('orders-list');
         if (container) {
-            container.innerHTML = '<div class="empty-state"><p>Не удалось определить пользователя. Убедитесь, что Mini App открыт из Telegram.</p></div>';
+            container.innerHTML = '<div class="empty-state"><p>Ошибка определения пользователя. Попробуйте обновить страницу.</p></div>';
         }
         return;
     }
@@ -1207,7 +1228,11 @@ async function loadOrders() {
 
 async function loadSubscription() {
     const userId = getUserId();
-    if (!userId) return;
+    // getUserId() всегда возвращает значение
+    if (!userId) {
+        console.warn('⚠️ Не удалось загрузить подписку: user_id не определен');
+        return;
+    }
     
     try {
         const res = await fetch(`/api/subscription?user_id=${userId}`);
@@ -1232,7 +1257,8 @@ async function loadSubscription() {
 
 async function toggleSubscription() {
     const userId = getUserId();
-    const chatId = tg?.initDataUnsafe?.chat?.id || tg?.initData ? (() => {
+    // Получаем chatId (может быть null в тестовом режиме)
+    const chatId = tg?.initDataUnsafe?.chat?.id || (tg?.initData ? (() => {
         try {
             const params = new URLSearchParams(tg.initData);
             const chatParam = params.get('chat');
@@ -1242,10 +1268,13 @@ async function toggleSubscription() {
             }
         } catch (e) {}
         return null;
-    })() : null;
+    })() : null);
     const username = tg?.initDataUnsafe?.user?.username || '';
     
-    if (!userId || !chatId) {
+    // В тестовом режиме используем userId как chatId
+    const finalChatId = chatId || userId;
+    
+    if (!userId) {
         const errorMsg = 'Ошибка: не удалось определить пользователя';
         if (tg && tg.showAlert) {
             tg.showAlert(errorMsg);
@@ -1261,7 +1290,7 @@ async function toggleSubscription() {
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
                 user_id: userId,
-                chat_id: chatId,
+                chat_id: finalChatId,
                 username: username
             })
         });
@@ -1285,8 +1314,10 @@ async function toggleSubscription() {
 async function submitWholesale(e) {
     e.preventDefault();
     const userId = getUserId();
+    // getUserId() всегда возвращает значение
     if (!userId) {
-        const errorMsg = 'Ошибка: не удалось определить пользователя';
+        console.error('❌ Критическая ошибка: userId не определен');
+        const errorMsg = 'Ошибка: не удалось определить пользователя. Попробуйте обновить страницу.';
         if (tg && tg.showAlert) {
             tg.showAlert(errorMsg);
         } else {
