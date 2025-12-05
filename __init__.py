@@ -1,0 +1,2 @@
+"""WebApp package for Telegram Mini App."""
+

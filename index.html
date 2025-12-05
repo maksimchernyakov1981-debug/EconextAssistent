@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Econext - Каталог микрофибры</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1>🛍️ Econext</h1>
+                <div class="header-actions">
+                    <button id="cart-btn" class="cart-button">
+                        🛒 <span id="cart-count">0</span>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Navigation Tabs -->
+        <nav class="tabs">
+            <button class="tab active" data-tab="catalog">Каталог</button>
+            <button class="tab" data-tab="cart">Корзина</button>
+            <button class="tab" data-tab="orders">Заказы</button>
+        </nav>
+
+        <!-- Loading -->
+        <div id="loading" class="loading">
+            <div class="spinner"></div>
+            <p>Загрузка...</p>
+        </div>
+
+        <!-- Error -->
+        <div id="error" class="error hidden">
+            <p id="error-message"></p>
+        </div>
+
+        <!-- Catalog Tab -->
+        <div id="catalog-tab" class="tab-content active">
+            <!-- Categories -->
+            <div id="categories-section" class="section">
+                <h2>Категории</h2>
+                <div id="categories-list" class="categories-grid"></div>
+            </div>
+
+            <!-- Products -->
+            <div id="products-section" class="section hidden">
+                <div class="section-header">
+                    <button id="back-to-categories" class="back-button">⬅️ Назад</button>
+                    <h2 id="category-title"></h2>
+                </div>
+                <div id="products-list" class="products-grid"></div>
+                <div id="pagination" class="pagination"></div>
+            </div>
+
+            <!-- Product Details -->
+            <div id="product-details" class="product-details hidden">
+                <button id="back-to-products" class="back-button">⬅️ Назад</button>
+                <div id="product-content"></div>
+            </div>
+        </div>
+
+        <!-- Cart Tab -->
+        <div id="cart-tab" class="tab-content">
+            <div id="cart-content">
+                <div id="cart-empty" class="empty-state">
+                    <p>🛒 Ваша корзина пуста</p>
+                    <button class="btn-primary" onclick="showTab('catalog')">Перейти в каталог</button>
+                </div>
+                <div id="cart-items" class="cart-items hidden"></div>
+                <div id="cart-summary" class="cart-summary hidden">
+                    <div class="summary-row">
+                        <span>Товаров:</span>
+                        <span id="cart-items-count">0</span>
+                    </div>
+                    <div class="summary-row">
+                        <span>Итого:</span>
+                        <span id="cart-total">0 ₽</span>
+                    </div>
+                    <button id="checkout-btn" class="btn-primary btn-large">Оформить заказ</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Orders Tab -->
+        <div id="orders-tab" class="tab-content">
+            <div id="orders-content">
+                <div class="empty-state">
+                    <p>📦 История заказов</p>
+                    <p class="text-muted">Ваши заказы будут отображаться здесь</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Checkout Modal -->
+    <div id="checkout-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Оформление заказа</h2>
+                <button class="close-btn" onclick="closeCheckoutModal()">✕</button>
+            </div>
+            <form id="checkout-form" class="checkout-form">
+                <div class="form-group">
+                    <label>ФИО *</label>
+                    <input type="text" name="name" required>
+                </div>
+                <div class="form-group">
+                    <label>Способ доставки *</label>
+                    <select name="shipping" required>
+                        <option value="post">Почта России</option>
+                        <option value="cdek">СДЭК</option>
+                        <option value="pyaterochka">Пятёрочка</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Адрес *</label>
+                    <textarea name="address" required></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Телефон *</label>
+                    <input type="tel" name="phone" required>
+                </div>
+                <div class="form-group">
+                    <label>Telegram</label>
+                    <input type="text" name="telegram">
+                </div>
+                <div class="form-group">
+                    <label>Комментарий</label>
+                    <textarea name="comment"></textarea>
+                </div>
+                <button type="submit" class="btn-primary btn-large">Отправить заказ</button>
+            </form>
+        </div>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
+
