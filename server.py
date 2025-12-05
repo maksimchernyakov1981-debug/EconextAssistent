@@ -4,7 +4,6 @@ import sqlite3
 import aiohttp
 from aiohttp import web
 from aiohttp.web import Response
-from typing import Dict, List
 from config.settings import logger
 
 
@@ -15,12 +14,16 @@ async def get_products(request: web.Request) -> Response:
         with sqlite3.connect("cache.db") as conn:
             conn.row_factory = sqlite3.Row
             c = conn.cursor()
-            c.execute("SELECT content FROM products_cache WHERE key = 'products'")
+            c.execute(
+                "SELECT content FROM products_cache WHERE key = 'products'"
+            )
             row = c.fetchone()
             if row and row['content']:
                 try:
                     products = json.loads(row['content'])
-                    logger.info("✅ Загружено %d товаров для Mini App", len(products))
+                    logger.info(
+                        "✅ Загружено %d товаров для Mini App", len(products)
+                    )
                     return web.json_response({
                         "success": True,
                         "products": products,
@@ -32,15 +35,23 @@ async def get_products(request: web.Request) -> Response:
                         {"success": False, "error": "Invalid products data"},
                         status=500
                     )
-            logger.warning("⚠️ Товары не найдены в кэше. Проверьте, что бот запущен и каталог загружен.")
+            logger.warning(
+                "⚠️ Товары не найдены в кэше. "
+                "Проверьте, что бот запущен и каталог загружен."
+            )
             return web.json_response({
                 "success": False,
-                "error": "Products not found. Please wait for catalog to load.",
+                "error": (
+                    "Products not found. Please wait for catalog to load."
+                ),
                 "products": [],
                 "count": 0
             })
     except Exception as e:
-        logger.error("❌ Ошибка получения товаров для Mini App: %s", e, exc_info=True)
+        logger.error(
+            "❌ Ошибка получения товаров для Mini App: %s",
+            e, exc_info=True
+        )
         return web.json_response(
             {"success": False, "error": str(e), "products": [], "count": 0},
             status=500
@@ -53,12 +64,17 @@ async def get_categories(request: web.Request) -> Response:
         with sqlite3.connect("cache.db") as conn:
             conn.row_factory = sqlite3.Row
             c = conn.cursor()
-            c.execute("SELECT content FROM categories_cache WHERE key = 'categories'")
+            c.execute(
+                "SELECT content FROM categories_cache WHERE key = 'categories'"
+            )
             row = c.fetchone()
             if row and row['content']:
                 try:
                     categories = json.loads(row['content'])
-                    logger.info("Загружено %d категорий для Mini App", len(categories))
+                    logger.info(
+                        "Загружено %d категорий для Mini App",
+                        len(categories)
+                    )
                     return web.json_response({
                         "success": True,
                         "categories": categories,
@@ -73,12 +89,17 @@ async def get_categories(request: web.Request) -> Response:
             logger.warning("Категории не найдены в кэше")
             return web.json_response({
                 "success": False,
-                "error": "Categories not found. Please wait for catalog to load.",
+                "error": (
+                    "Categories not found. Please wait for catalog to load."
+                ),
                 "categories": [],
                 "count": 0
             })
     except Exception as e:
-        logger.error("Ошибка получения категорий для Mini App: %s", e, exc_info=True)
+        logger.error(
+            "Ошибка получения категорий для Mini App: %s",
+            e, exc_info=True
+        )
         return web.json_response(
             {"success": False, "error": str(e), "categories": [], "count": 0},
             status=500
@@ -94,9 +115,9 @@ async def get_cart(request: web.Request) -> Response:
                 {"success": False, "error": "user_id required"},
                 status=400
             )
-        
+
         user_id = int(user_id)
-        
+
         with sqlite3.connect("cache.db") as conn:
             conn.row_factory = sqlite3.Row
             c = conn.cursor()
@@ -108,15 +129,17 @@ async def get_cart(request: web.Request) -> Response:
                 {"product_id": row['product_id'], "quantity": row['quantity']}
                 for row in c.fetchall()
             ]
-            
+
             # Получаем информацию о товарах
-            c.execute("SELECT content FROM products_cache WHERE key = 'products'")
+            c.execute(
+                "SELECT content FROM products_cache WHERE key = 'products'"
+            )
             row = c.fetchone()
             products_dict = {}
             if row:
                 products = json.loads(row['content'])
                 products_dict = {p["id"]: p for p in products}
-            
+
             # Обогащаем корзину данными о товарах
             cart_with_products = []
             total = 0
@@ -138,7 +161,7 @@ async def get_cart(request: web.Request) -> Response:
                             "product": product,
                             "subtotal": 0
                         })
-            
+
             return web.json_response({
                 "success": True,
                 "cart": cart_with_products,
@@ -159,18 +182,18 @@ async def add_to_cart_api(request: web.Request) -> Response:
         user_id = data.get('user_id')
         product_id = data.get('product_id')
         quantity = data.get('quantity', 1)
-        
+
         if not user_id or not product_id:
             return web.json_response(
                 {"success": False, "error": "user_id and product_id required"},
                 status=400
             )
-        
+
         from database.cart import add_to_cart
         # Добавляем товар quantity раз
         for _ in range(int(quantity)):
             add_to_cart(int(user_id), str(product_id))
-        
+
         return web.json_response({"success": True})
     except Exception as e:
         logger.error("Ошибка добавления в корзину через API: %s", e)
@@ -186,16 +209,16 @@ async def remove_from_cart_api(request: web.Request) -> Response:
         data = await request.json()
         user_id = data.get('user_id')
         product_id = data.get('product_id')
-        
+
         if not user_id or not product_id:
             return web.json_response(
                 {"success": False, "error": "user_id and product_id required"},
                 status=400
             )
-        
+
         from database.cart import remove_from_cart
         remove_from_cart(int(user_id), str(product_id))
-        
+
         return web.json_response({"success": True})
     except Exception as e:
         logger.error("Ошибка удаления из корзины через API: %s", e)
@@ -212,16 +235,19 @@ async def update_cart_quantity_api(request: web.Request) -> Response:
         user_id = data.get('user_id')
         product_id = data.get('product_id')
         quantity = data.get('quantity')
-        
+
         if not user_id or not product_id or quantity is None:
             return web.json_response(
-                {"success": False, "error": "user_id, product_id and quantity required"},
+                {
+                    "success": False,
+                    "error": "user_id, product_id and quantity required"
+                },
                 status=400
             )
-        
+
         from database.cart import update_cart_quantity
         update_cart_quantity(int(user_id), str(product_id), int(quantity))
-        
+
         return web.json_response({"success": True})
     except Exception as e:
         logger.error("Ошибка обновления количества в корзине через API: %s", e)
@@ -237,32 +263,34 @@ async def submit_order_api(request: web.Request) -> Response:
         data = await request.json()
         user_id = data.get('user_id')
         order_data = data.get('order_data')
-        
+
         if not user_id or not order_data:
             return web.json_response(
                 {"success": False, "error": "user_id and order_data required"},
                 status=400
             )
-        
+
         from database.orders import save_order
         from database.cart import clear_cart, get_cart_items
         from utils.delivery import calculate_delivery_cost
-        
+
         # Получаем корзину для расчета суммы
         cart_items = get_cart_items(int(user_id))
         products_dict = {}
         total = 0
-        
+
         # Загружаем товары для расчета
         with sqlite3.connect("cache.db") as conn:
             conn.row_factory = sqlite3.Row
             c = conn.cursor()
-            c.execute("SELECT content FROM products_cache WHERE key = 'products'")
+            c.execute(
+                "SELECT content FROM products_cache WHERE key = 'products'"
+            )
             row = c.fetchone()
             if row:
                 products = json.loads(row['content'])
                 products_dict = {p["id"]: p for p in products}
-        
+
         for product_id, quantity in cart_items:
             product = products_dict.get(product_id)
             if product:
@@ -271,16 +299,16 @@ async def submit_order_api(request: web.Request) -> Response:
                     total += price * quantity
                 except (ValueError, TypeError):
                     pass
-        
+
         delivery_cost = calculate_delivery_cost(total)
         total_with_delivery = total + delivery_cost
-        
+
         # Сохраняем заказ
         order_id = save_order(int(user_id), order_data, total_with_delivery)
-        
+
         # Очищаем корзину
         clear_cart(int(user_id))
-        
+
         return web.json_response({
             "success": True,
             "order_id": order_id
@@ -295,13 +323,23 @@ async def submit_order_api(request: web.Request) -> Response:
 
 async def serve_index(request: web.Request) -> Response:
     """Serve Mini App index page."""
+    # НЕ обрабатываем API запросы как главную страницу
+    if request.path.startswith('/api/'):
+        raise web.HTTPNotFound()
+
     try:
         import os
         file_path = "webapp/index.html"
         if not os.path.exists(file_path):
-            logger.error("Файл index.html не найден: %s", os.path.abspath(file_path))
+            logger.error(
+                "Файл index.html не найден: %s",
+                os.path.abspath(file_path)
+            )
             return Response(
-                text="<h1>Mini App not found</h1><p>File: " + file_path + "</p>",
+                text=(
+                    "<h1>Mini App not found</h1><p>File: " +
+                    file_path + "</p>"
+                ),
                 status=404,
                 content_type="text/html"
             )
@@ -320,19 +358,24 @@ async def serve_index(request: web.Request) -> Response:
 
 async def serve_static(request: web.Request) -> Response:
     """Serve static files (CSS, JS)."""
+    # НЕ обрабатываем API запросы как статические файлы
+    if request.path.startswith('/api/'):
+        raise web.HTTPNotFound()
+
     file_path = request.match_info.get('file', '')
     file_type = request.match_info.get('type', '')
-    
+
     if not file_path or not file_type:
         return Response(status=404)
-    
+
     try:
         file_ext = {
             'css': 'text/css',
             'js': 'application/javascript'
         }.get(file_type, 'text/plain')
-        
-        with open(f"webapp/static/{file_type}/{file_path}", "r", encoding="utf-8") as f:
+
+        file_full_path = f"webapp/static/{file_type}/{file_path}"
+        with open(file_full_path, "r", encoding="utf-8") as f:
             content = f.read()
         return Response(text=content, content_type=file_ext)
     except FileNotFoundError:
@@ -364,21 +407,23 @@ async def search_products_api(request: web.Request) -> Response:
                 {"success": False, "error": "Query required"},
                 status=400
             )
-        
+
         with sqlite3.connect("cache.db") as conn:
             conn.row_factory = sqlite3.Row
             c = conn.cursor()
-            c.execute("SELECT content FROM products_cache WHERE key = 'products'")
+            c.execute(
+                "SELECT content FROM products_cache WHERE key = 'products'"
+            )
             row = c.fetchone()
             if not row:
                 return web.json_response(
                     {"success": False, "error": "Products not found"},
                     status=404
                 )
-            
+
             products = json.loads(row['content'])
             query_lower = query.lower()
-            
+
             # Простой поиск по названию и описанию
             matched = []
             for product in products:
@@ -386,7 +431,7 @@ async def search_products_api(request: web.Request) -> Response:
                 description = product.get("description", "").lower()
                 if query_lower in name or query_lower in description:
                     matched.append(product)
-            
+
             return web.json_response({
                 "success": True,
                 "products": matched,
@@ -407,59 +452,85 @@ async def ai_chat_api(request: web.Request) -> Response:
         data = await request.json()
         user_id = data.get('user_id')
         message = data.get('message', '').strip()
-        
+
         if not user_id or not message:
             logger.warning("⚠️ AI чат: отсутствует user_id или message")
             return web.json_response(
                 {"success": False, "error": "user_id and message required"},
                 status=400
             )
-        
+
         logger.info("AI чат: user_id=%s, message=%s", user_id, message[:50])
-        
+
         # Получаем товары
         with sqlite3.connect("cache.db") as conn:
             conn.row_factory = sqlite3.Row
             c = conn.cursor()
-            c.execute("SELECT content FROM products_cache WHERE key = 'products'")
+            c.execute(
+                "SELECT content FROM products_cache WHERE key = 'products'"
+            )
             row = c.fetchone()
             products = []
             if row:
                 products = json.loads(row['content'])
-        
+
         logger.info("AI чат: загружено %d товаров", len(products))
-        
+
         if not products:
             logger.warning("⚠️ AI чат: товары не найдены в кэше")
             return web.json_response({
                 "success": True,
-                "reply": "Извините, каталог товаров еще не загружен. Попробуйте позже.",
+                "reply": (
+                    "Извините, каталог товаров еще не загружен. "
+                    "Попробуйте позже."
+                ),
                 "recommended_products": [],
                 "product_ids": [],
                 "order_buttons_mode": False
             })
-        
+
         # Генерируем ответ через AI service
         import aiohttp
         from services.ai_service import generate_maxim_reply
-        
+
         logger.info("AI чат: генерация ответа через AI service...")
         try:
             async with aiohttp.ClientSession() as session:
-                reply_text, recommended_products, product_ids, order_buttons_mode = await generate_maxim_reply(
+                (
+                    reply_text, recommended_products, product_ids,
+                    order_buttons_mode
+                ) = await generate_maxim_reply(
                     message, session, products
                 )
-            logger.info("✅ AI чат: ответ сгенерирован, рекомендовано товаров: %d", len(recommended_products) if recommended_products else 0)
+            logger.info(
+                "✅ AI чат: ответ сгенерирован, рекомендовано товаров: %d",
+                len(recommended_products) if recommended_products else 0
+            )
         except Exception as ai_error:
-            logger.error("❌ Ошибка генерации ответа ИИ: %s", ai_error, exc_info=True)
+            logger.error(
+                "❌ Ошибка генерации ответа ИИ: %s",
+                ai_error, exc_info=True
+            )
             error_msg = str(ai_error)
             # Более понятное сообщение для пользователя
-            user_friendly_msg = "Извините, произошла ошибка при генерации ответа. Попробуйте позже или переформулируйте вопрос."
-            if "timeout" in error_msg.lower() or "timed out" in error_msg.lower():
-                user_friendly_msg = "Извините, ответ занимает слишком много времени. Попробуйте задать вопрос короче или позже."
+            user_friendly_msg = (
+                "Извините, произошла ошибка при генерации ответа. "
+                "Попробуйте позже или переформулируйте вопрос."
+            )
+            if (
+                "timeout" in error_msg.lower() or
+                "timed out" in error_msg.lower()
+            ):
+                user_friendly_msg = (
+                    "Извините, ответ занимает слишком много времени. "
+                    "Попробуйте задать вопрос короче или позже."
+                )
             elif "api" in error_msg.lower() or "key" in error_msg.lower():
-                user_friendly_msg = "Извините, временные проблемы с сервисом. Попробуйте позже."
-            
+                user_friendly_msg = (
+                    "Извините, временные проблемы с сервисом. "
+                    "Попробуйте позже."
+                )
+
             return web.json_response({
                 "success": False,
                 "error": error_msg,
@@ -468,7 +539,7 @@ async def ai_chat_api(request: web.Request) -> Response:
                 "product_ids": [],
                 "order_buttons_mode": False
             }, status=500)
-        
+
         # Преобразуем recommended_products в список словарей для JSON
         recommended_list = []
         if recommended_products:
@@ -481,7 +552,7 @@ async def ai_chat_api(request: web.Request) -> Response:
                         "description": product.get("description", ""),
                         "pictures": product.get("pictures", [])
                     })
-        
+
         return web.json_response({
             "success": True,
             "reply": reply_text,
@@ -505,20 +576,20 @@ async def submit_wholesale_api(request: web.Request) -> Response:
         name = data.get('name')
         contact = data.get('contact')
         question = data.get('question')
-        
+
         if not all([user_id, name, contact, question]):
             return web.json_response(
                 {"success": False, "error": "All fields required"},
                 status=400
             )
-        
+
         from database.wholesale import save_wholesale_request
         from config.settings import TELEGRAM_BOT_TOKEN, OWNER_CHAT_ID
-        
+
         request_id = save_wholesale_request(
             int(user_id), name, contact, question
         )
-        
+
         # Отправляем уведомление админу
         try:
             async with aiohttp.ClientSession() as session:
@@ -531,7 +602,10 @@ async def submit_wholesale_api(request: web.Request) -> Response:
                     f"Вопрос: {question}"
                 )
                 await session.post(
-                    f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+                    (
+                        f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}"
+                        "/sendMessage"
+                    ),
                     json={
                         "chat_id": OWNER_CHAT_ID,
                         "text": message,
@@ -540,7 +614,7 @@ async def submit_wholesale_api(request: web.Request) -> Response:
                 )
         except Exception as e:
             logger.error("Ошибка отправки уведомления: %s", e)
-        
+
         return web.json_response({
             "success": True,
             "request_id": request_id
@@ -562,10 +636,10 @@ async def get_subscription_status(request: web.Request) -> Response:
                 {"success": False, "error": "user_id required"},
                 status=400
             )
-        
+
         from database.subscriptions import is_user_subscribed
         subscribed = is_user_subscribed(int(user_id))
-        
+
         return web.json_response({
             "success": True,
             "subscribed": subscribed
@@ -585,24 +659,26 @@ async def toggle_subscription_api(request: web.Request) -> Response:
         user_id = data.get('user_id')
         chat_id = data.get('chat_id')
         username = data.get('username', '')
-        
+
         if not user_id or not chat_id:
             return web.json_response(
                 {"success": False, "error": "user_id and chat_id required"},
                 status=400
             )
-        
-        from database.subscriptions import is_user_subscribed, subscribe_user, unsubscribe_user
-        
+
+        from database.subscriptions import (
+            is_user_subscribed, subscribe_user, unsubscribe_user
+        )
+
         subscribed = is_user_subscribed(int(user_id))
-        
+
         if subscribed:
             unsubscribe_user(int(user_id))
             new_status = False
         else:
             subscribe_user(int(user_id), int(chat_id), username)
             new_status = True
-        
+
         return web.json_response({
             "success": True,
             "subscribed": new_status
@@ -624,10 +700,10 @@ async def get_user_orders_api(request: web.Request) -> Response:
                 {"success": False, "error": "user_id required"},
                 status=400
             )
-        
+
         from database.orders import get_user_orders
         orders = get_user_orders(int(user_id), limit=20)
-        
+
         orders_list = []
         for order in orders:
             order_id, total_amount, status, created_at, order_data_json = order
@@ -639,7 +715,7 @@ async def get_user_orders_api(request: web.Request) -> Response:
                 "created_at": created_at,
                 "order_data": order_data
             })
-        
+
         return web.json_response({
             "success": True,
             "orders": orders_list
@@ -665,37 +741,74 @@ async def error_middleware(request: web.Request, handler):
                 'Access-Control-Max-Age': '3600'
             }
         )
-    
+
     # Логируем запросы к API
     if request.path.startswith('/api/'):
-        logger.info("📥 API запрос: %s %s от %s", request.method, request.path, request.remote)
-    
+        logger.info(
+            "📥 API запрос: %s %s от %s",
+            request.method, request.path, request.remote
+        )
+        # Дополнительная диагностика для проблемных endpoints
+        if '/api/ai/chat' in request.path:
+            logger.info(
+                "🔍 Детали запроса AI чата: method=%s, path=%s, query=%s",
+                request.method, request.path, dict(request.query)
+            )
+
     try:
         response = await handler(request)
         # Логируем успешные ответы
         if request.path.startswith('/api/'):
-            logger.info("✅ API ответ: %s %s -> %d", request.method, request.path, response.status)
+            logger.info(
+                "✅ API ответ: %s %s -> %d",
+                request.method, request.path, response.status
+            )
         # Добавляем CORS заголовки
         response.headers['Access-Control-Allow-Origin'] = '*'
         response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
         response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
-        
+
         # Убеждаемся, что API endpoints всегда возвращают JSON
         if request.path.startswith('/api/'):
             content_type = response.headers.get('Content-Type', '')
             if 'application/json' not in content_type:
-                logger.warning("API endpoint %s вернул не-JSON ответ (content-type: %s), принудительно устанавливаем JSON", request.path, content_type)
+                logger.warning(
+                    "API endpoint %s вернул не-JSON ответ "
+                    "(content-type: %s), принудительно устанавливаем JSON",
+                    request.path, content_type
+                )
                 # Принудительно устанавливаем JSON content-type
-                response.headers['Content-Type'] = 'application/json; charset=utf-8'
-        
+                response.headers['Content-Type'] = (
+                    'application/json; charset=utf-8'
+                )
+
         return response
     except web.HTTPException as ex:
         # Для HTTP исключений возвращаем JSON для API запросов
         if request.path.startswith('/api/'):
-            logger.warning("HTTP %d для API endpoint: %s %s", ex.status, request.method, request.path)
-            error_msg = ex.reason or f"Endpoint not found: {request.method} {request.path}"
+            logger.error(
+                "❌ HTTP %d для API endpoint: %s %s",
+                ex.status, request.method, request.path
+            )
+            logger.error("   Причина: %s", ex.reason)
+            # Логируем все зарегистрированные маршруты для диагностики
             if ex.status == 404:
-                error_msg = f"API endpoint not found: {request.method} {request.path}"
+                logger.error("   🔍 Зарегистрированные API маршруты:")
+                for route in request.app.router.routes():
+                    route_str = str(route.resource)
+                    if '/api/' in route_str:
+                        logger.error(
+                            "     %s %s", route.method, route_str[:80]
+                        )
+            error_msg = (
+                ex.reason or
+                f"Endpoint not found: {request.method} {request.path}"
+            )
+            if ex.status == 404:
+                error_msg = (
+                    f"API endpoint not found: {request.method} "
+                    f"{request.path}. Проверьте, что сервер запущен."
+                )
             return web.json_response({
                 "success": False,
                 "error": error_msg
@@ -715,7 +828,7 @@ async def error_middleware(request: web.Request, handler):
 def create_webapp_app() -> web.Application:
     """Create aiohttp application for Mini App."""
     app = web.Application(middlewares=[error_middleware])
-    
+
     # API routes (должны быть первыми!)
     app.add_routes([
         web.get("/api/products", get_products),
@@ -733,16 +846,15 @@ def create_webapp_app() -> web.Application:
         web.post("/api/subscription/toggle", toggle_subscription_api),
         web.get("/api/orders", get_user_orders_api),
     ])
-    
+
     # Static files
     app.add_routes([
         web.get("/static/{type}/{file}", serve_static),
     ])
-    
+
     # Main page (должен быть последним!)
     app.add_routes([
         web.get("/", serve_index),
     ])
-    
-    return app
 
+    return app
