@@ -26,24 +26,56 @@ async function loadData() {
     showLoading(true);
     try {
         const [productsRes, categoriesRes] = await Promise.all([
-            fetch('/api/products'),
-            fetch('/api/categories')
+            fetch('/api/products').catch(err => {
+                console.error('Ошибка загрузки товаров:', err);
+                return { ok: false, json: async () => ({ success: false, error: err.message, products: [] }) };
+            }),
+            fetch('/api/categories').catch(err => {
+                console.error('Ошибка загрузки категорий:', err);
+                return { ok: false, json: async () => ({ success: false, error: err.message, categories: [] }) };
+            })
         ]);
         
-        const productsData = await productsRes.json();
-        const categoriesData = await categoriesRes.json();
+        let productsData, categoriesData;
         
-        if (productsData.success) {
-            state.products = productsData.products;
+        try {
+            productsData = await productsRes.json();
+        } catch (e) {
+            console.error('Ошибка парсинга JSON товаров:', e);
+            const text = await productsRes.text();
+            console.error('Полученный ответ:', text.substring(0, 200));
+            productsData = { success: false, error: 'Invalid JSON response', products: [] };
         }
         
-        if (categoriesData.success) {
+        try {
+            categoriesData = await categoriesRes.json();
+        } catch (e) {
+            console.error('Ошибка парсинга JSON категорий:', e);
+            const text = await categoriesRes.text();
+            console.error('Полученный ответ:', text.substring(0, 200));
+            categoriesData = { success: false, error: 'Invalid JSON response', categories: [] };
+        }
+        
+        if (productsData.success && productsData.products) {
+            state.products = productsData.products;
+            console.log(`Загружено ${state.products.length} товаров`);
+        } else {
+            console.warn('Товары не загружены:', productsData.error);
+            state.products = [];
+        }
+        
+        if (categoriesData.success && categoriesData.categories) {
             state.categories = categoriesData.categories;
             renderCategories();
+            console.log(`Загружено ${state.categories.length} категорий`);
+        } else {
+            console.warn('Категории не загружены:', categoriesData.error);
+            state.categories = [];
         }
         
         await loadCart();
     } catch (error) {
+        console.error('Критическая ошибка загрузки данных:', error);
         showError('Ошибка загрузки данных: ' + error.message);
     } finally {
         showLoading(false);

@@ -16,17 +16,32 @@ async def get_products(request: web.Request) -> Response:
             c = conn.cursor()
             c.execute("SELECT content FROM products_cache WHERE key = 'products'")
             row = c.fetchone()
-            if row:
-                products = json.loads(row['content'])
-                return web.json_response({"success": True, "products": products})
-            return web.json_response(
-                {"success": False, "error": "Products not found"},
-                status=404
-            )
+            if row and row['content']:
+                try:
+                    products = json.loads(row['content'])
+                    logger.info("Загружено %d товаров для Mini App", len(products))
+                    return web.json_response({
+                        "success": True,
+                        "products": products,
+                        "count": len(products)
+                    })
+                except json.JSONDecodeError as e:
+                    logger.error("Ошибка парсинга JSON товаров: %s", e)
+                    return web.json_response(
+                        {"success": False, "error": "Invalid products data"},
+                        status=500
+                    )
+            logger.warning("Товары не найдены в кэше")
+            return web.json_response({
+                "success": False,
+                "error": "Products not found. Please wait for catalog to load.",
+                "products": [],
+                "count": 0
+            })
     except Exception as e:
-        logger.error("Ошибка получения товаров для Mini App: %s", e)
+        logger.error("Ошибка получения товаров для Mini App: %s", e, exc_info=True)
         return web.json_response(
-            {"success": False, "error": str(e)},
+            {"success": False, "error": str(e), "products": [], "count": 0},
             status=500
         )
 
@@ -597,11 +612,40 @@ async def get_user_orders_api(request: web.Request) -> Response:
         )
 
 
+@web.middleware
+async def error_middleware(request: web.Request, handler):
+    """Middleware для обработки ошибок и добавления CORS заголовков."""
+    try:
+        response = await handler(request)
+        # Добавляем CORS заголовки
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+        return response
+    except web.HTTPException as ex:
+        # Для HTTP исключений возвращаем JSON
+        if request.path.startswith('/api/'):
+            return web.json_response({
+                "success": False,
+                "error": ex.reason or "Not found"
+            }, status=ex.status)
+        raise
+    except Exception as ex:
+        logger.error("Необработанная ошибка: %s", ex, exc_info=True)
+        # Для API запросов возвращаем JSON
+        if request.path.startswith('/api/'):
+            return web.json_response({
+                "success": False,
+                "error": str(ex)
+            }, status=500)
+        raise
+
+
 def create_webapp_app() -> web.Application:
     """Create aiohttp application for Mini App."""
-    app = web.Application()
+    app = web.Application(middlewares=[error_middleware])
     
-    # API routes
+    # API routes (должны быть первыми!)
     app.add_routes([
         web.get("/api/products", get_products),
         web.get("/api/categories", get_categories),
@@ -624,7 +668,7 @@ def create_webapp_app() -> web.Application:
         web.get("/static/{type}/{file}", serve_static),
     ])
     
-    # Main page
+    # Main page (должен быть последним!)
     app.add_routes([
         web.get("/", serve_index),
     ])
