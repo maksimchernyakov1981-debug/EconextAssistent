@@ -699,6 +699,13 @@ async def toggle_subscription_api(request: web.Request) -> Response:
 
 async def get_user_orders_api(request: web.Request) -> Response:
     """Get user orders."""
+    logger.info(
+        "✅ Запрос заказов получен! От %s, метод: %s, путь: %s, user_id: %s",
+        request.remote,
+        request.method,
+        request.path,
+        request.query.get('user_id')
+    )
     try:
         user_id = request.query.get('user_id')
         if not user_id:
@@ -758,6 +765,11 @@ async def error_middleware(request: web.Request, handler):
         if '/api/ai/chat' in request.path:
             logger.info(
                 "🔍 Детали запроса AI чата: method=%s, path=%s, query=%s",
+                request.method, request.path, dict(request.query)
+            )
+        if '/api/orders' in request.path:
+            logger.info(
+                "🔍 Детали запроса заказов: method=%s, path=%s, query=%s",
                 request.method, request.path, dict(request.query)
             )
 
@@ -826,6 +838,29 @@ async def error_middleware(request: web.Request, handler):
                             "   ⚠️ Запрос к /api/ai/chat не найден! "
                             "Проверьте метод запроса (должен быть POST)"
                         )
+                
+                # Дополнительная диагностика для заказов
+                orders_exists = False
+                if '/api/orders' in request.path:
+                    for route in request.app.router.routes():
+                        route_str = str(route.resource)
+                        if '/api/orders' in route_str:
+                            orders_exists = True
+                            logger.error(
+                                "     ✅ Маршрут /api/orders найден, "
+                                "но запрос %s %s не совпадает",
+                                request.method, request.path
+                            )
+                            break
+                    if not orders_exists:
+                        logger.error(
+                            "   ❌ Маршрут /api/orders НЕ ЗАРЕГИСТРИРОВАН!"
+                        )
+                    else:
+                        logger.error(
+                            "   ⚠️ Запрос к /api/orders не найден! "
+                            "Проверьте метод запроса (должен быть GET)"
+                        )
             error_msg = (
                 ex.reason or
                 f"Endpoint not found: {request.method} {request.path}"
@@ -876,6 +911,7 @@ def create_webapp_app() -> web.Application:
     # Логируем зарегистрированные маршруты при запуске
     logger.info("📋 Зарегистрированные API маршруты:")
     ai_chat_found = False
+    orders_found = False
     for route in app.router.routes():
         route_str = str(route.resource)
         method = getattr(route, 'method', 'ANY')
@@ -883,11 +919,18 @@ def create_webapp_app() -> web.Application:
             logger.info("   %s %s", method, route_str)
             if '/api/ai/chat' in route_str:
                 ai_chat_found = True
+            if '/api/orders' in route_str:
+                orders_found = True
     
     if not ai_chat_found:
         logger.error("❌ КРИТИЧНО: Маршрут /api/ai/chat НЕ ЗАРЕГИСТРИРОВАН!")
     else:
         logger.info("✅ Маршрут /api/ai/chat успешно зарегистрирован")
+    
+    if not orders_found:
+        logger.error("❌ КРИТИЧНО: Маршрут /api/orders НЕ ЗАРЕГИСТРИРОВАН!")
+    else:
+        logger.info("✅ Маршрут /api/orders успешно зарегистрирован")
 
     # Static files
     app.add_routes([
