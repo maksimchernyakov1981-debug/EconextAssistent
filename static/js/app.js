@@ -7,6 +7,12 @@ if (tg) {
     console.warn('Telegram WebApp API не доступен. Работаем в режиме разработки.');
 }
 
+// Base URL для API запросов
+// Используем текущий origin, чтобы запросы шли на тот же сервер
+const API_BASE_URL = window.location.origin;
+console.log('🌐 Базовый URL для API:', API_BASE_URL);
+console.log('📍 Текущий URL:', window.location.href);
+
 // Helper function to get user ID from Telegram WebApp
 function getUserId() {
     // Метод 0: Проверка доступности Telegram WebApp API
@@ -164,6 +170,8 @@ async function safeJsonParse(response) {
 document.addEventListener('DOMContentLoaded', async () => {
     // Отладочная информация
     console.log('🚀 Инициализация Mini App...');
+    console.log('📍 Текущий URL:', window.location.href);
+    console.log('🌐 Базовый URL для API:', API_BASE_URL);
     console.log('Telegram WebApp доступен:', !!tg);
     if (tg) {
         console.log('initDataUnsafe:', tg.initDataUnsafe);
@@ -184,8 +192,10 @@ async function loadData() {
         // Загружаем товары
         let productsData = { success: false, products: [], error: 'Unknown error' };
         try {
-            const productsRes = await fetch('/api/products');
-            console.log('📦 Запрос товаров - статус:', productsRes.status, 'content-type:', productsRes.headers.get('content-type'));
+            const url = `${API_BASE_URL}/api/products`;
+            console.log('📦 Запрос товаров - URL:', url);
+            const productsRes = await fetch(url);
+            console.log('📦 Ответ товаров - статус:', productsRes.status, 'URL:', productsRes.url, 'content-type:', productsRes.headers.get('content-type'));
             productsData = await safeJsonParse(productsRes);
             if (!productsData.products) {
                 productsData.products = [];
@@ -193,14 +203,18 @@ async function loadData() {
             console.log('📦 Результат загрузки товаров:', productsData.success ? `✅ ${productsData.products?.length || 0} товаров` : `❌ ${productsData.error}`);
         } catch (error) {
             console.error('❌ Критическая ошибка загрузки товаров:', error);
+            console.error('❌ URL запроса был:', `${API_BASE_URL}/api/products`);
+            console.error('❌ Тип ошибки:', error.name, 'Сообщение:', error.message);
             productsData = { success: false, error: error.message || 'Network error', products: [] };
         }
         
         // Загружаем категории
         let categoriesData = { success: false, categories: [], error: 'Unknown error' };
         try {
-            const categoriesRes = await fetch('/api/categories');
-            console.log('📁 Запрос категорий - статус:', categoriesRes.status, 'content-type:', categoriesRes.headers.get('content-type'));
+            const url = `${API_BASE_URL}/api/categories`;
+            console.log('📁 Запрос категорий - URL:', url);
+            const categoriesRes = await fetch(url);
+            console.log('📁 Ответ категорий - статус:', categoriesRes.status, 'URL:', categoriesRes.url, 'content-type:', categoriesRes.headers.get('content-type'));
             categoriesData = await safeJsonParse(categoriesRes);
             if (!categoriesData.categories) {
                 categoriesData.categories = [];
@@ -208,6 +222,8 @@ async function loadData() {
             console.log('📁 Результат загрузки категорий:', categoriesData.success ? `✅ ${categoriesData.categories?.length || 0} категорий` : `❌ ${categoriesData.error}`);
         } catch (error) {
             console.error('❌ Критическая ошибка загрузки категорий:', error);
+            console.error('❌ URL запроса был:', `${API_BASE_URL}/api/categories`);
+            console.error('❌ Тип ошибки:', error.name, 'Сообщение:', error.message);
             categoriesData = { success: false, error: error.message || 'Network error', categories: [] };
         }
         
@@ -266,7 +282,7 @@ async function loadCart() {
     }
     
     try {
-        const res = await fetch(`/api/cart?user_id=${userId}`);
+        const res = await fetch(`${API_BASE_URL}/api/cart?user_id=${userId}`);
         const data = await safeJsonParse(res);
         if (data.success) {
             state.cart = data.cart;
@@ -512,7 +528,7 @@ async function addToCart(productId) {
     }
     
     try {
-        const res = await fetch('/api/cart/add', {
+        const res = await fetch(`${API_BASE_URL}/api/cart/add`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
@@ -544,7 +560,7 @@ async function removeFromCart(productId) {
     if (!userId) return;
     
     try {
-        const res = await fetch('/api/cart/remove', {
+        const res = await fetch(`${API_BASE_URL}/api/cart/remove`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
@@ -573,7 +589,7 @@ async function updateQuantity(productId, quantity) {
     if (!userId) return;
     
     try {
-        const res = await fetch('/api/cart/update', {
+        const res = await fetch(`${API_BASE_URL}/api/cart/update`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
@@ -713,7 +729,7 @@ async function handleCheckout(e) {
     };
     
     try {
-        const res = await fetch('/api/order', {
+        const res = await fetch(`${API_BASE_URL}/api/order`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
@@ -783,7 +799,7 @@ async function searchProducts() {
     
     showLoading(true);
     try {
-        const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+        const res = await fetch(`${API_BASE_URL}/api/search?q=${encodeURIComponent(query)}`);
         const data = await safeJsonParse(res);
         
         if (data.success) {
@@ -877,7 +893,11 @@ async function sendAIMessage() {
     const typingId = addAIMessage('assistant', '🤔 Думаю...', true);
     
     try {
-        const res = await fetch('/api/ai/chat', {
+        const url = `${API_BASE_URL}/api/ai/chat`;
+        console.log('🤖 Отправка запроса к ИИ:', url);
+        console.log('📤 Данные запроса:', { user_id: userId, message: message.substring(0, 50) + '...' });
+        
+        const res = await fetch(url, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
@@ -886,6 +906,7 @@ async function sendAIMessage() {
             })
         });
         
+        console.log('📥 Ответ от ИИ:', res.status, res.statusText, res.url);
         const data = await safeJsonParse(res);
         
         // Remove typing indicator
@@ -922,9 +943,13 @@ async function sendAIMessage() {
                 addAIMessage('assistant', orderButtonsHtml, false, true);
             }
         } else {
+            console.error('❌ Ошибка от ИИ:', data.error);
             addAIMessage('assistant', 'Извините, произошла ошибка: ' + (data.error || 'Неизвестная ошибка') + '. Попробуйте еще раз.');
         }
     } catch (error) {
+        console.error('❌ Критическая ошибка запроса к ИИ:', error);
+        console.error('❌ URL запроса был:', `${API_BASE_URL}/api/ai/chat`);
+        console.error('❌ Тип ошибки:', error.name, 'Сообщение:', error.message);
         const typingEl = document.getElementById(`ai-msg-${typingId}`);
         if (typingEl) typingEl.remove();
         addAIMessage('assistant', 'Ошибка соединения: ' + error.message + '. Проверьте интернет.');
@@ -975,7 +1000,7 @@ async function showProductDetailsById(productId) {
     // Если не найден, загружаем из API
     if (!product) {
         try {
-            const res = await fetch(`/api/products`);
+            const res = await fetch(`${API_BASE_URL}/api/products`);
             const data = await safeJsonParse(res);
             if (data.success && data.products) {
                 state.products = data.products;
@@ -1042,7 +1067,7 @@ function hideInfoSection() {
 
 async function loadFAQ() {
     try {
-        const res = await fetch('/api/faq');
+        const res = await fetch(`${API_BASE_URL}/api/faq`);
         const data = await safeJsonParse(res);
         
         if (data.success) {
@@ -1171,7 +1196,7 @@ async function loadOrders() {
     
     showLoading(true);
     try {
-        const res = await fetch(`/api/orders?user_id=${userId}`);
+        const res = await fetch(`${API_BASE_URL}/api/orders?user_id=${userId}`);
         const data = await safeJsonParse(res);
         
         if (data.success) {
@@ -1235,7 +1260,7 @@ async function loadSubscription() {
     }
     
     try {
-        const res = await fetch(`/api/subscription?user_id=${userId}`);
+        const res = await fetch(`${API_BASE_URL}/api/subscription?user_id=${userId}`);
         const data = await safeJsonParse(res);
         
         if (data.success) {
@@ -1285,7 +1310,7 @@ async function toggleSubscription() {
     }
     
     try {
-        const res = await fetch('/api/subscription/toggle', {
+        const res = await fetch(`${API_BASE_URL}/api/subscription/toggle`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
@@ -1328,7 +1353,7 @@ async function submitWholesale(e) {
     
     const formData = new FormData(e.target);
     try {
-        const res = await fetch('/api/wholesale', {
+        const res = await fetch(`${API_BASE_URL}/api/wholesale`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
