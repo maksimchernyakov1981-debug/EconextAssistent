@@ -448,7 +448,12 @@ async def search_products_api(request: web.Request) -> Response:
 
 async def ai_chat_api(request: web.Request) -> Response:
     """Handle AI chat messages."""
-    logger.info("Запрос AI чата от %s", request.remote)
+    logger.info(
+        "✅ Запрос AI чата получен! От %s, метод: %s, путь: %s",
+        request.remote,
+        request.method,
+        request.path
+    )
     try:
         data = await request.json()
         user_id = data.get('user_id')
@@ -795,11 +800,31 @@ async def error_middleware(request: web.Request, handler):
             # Логируем все зарегистрированные маршруты для диагностики
             if ex.status == 404:
                 logger.error("   🔍 Зарегистрированные API маршруты:")
+                ai_chat_exists = False
                 for route in request.app.router.routes():
                     route_str = str(route.resource)
+                    method = getattr(route, 'method', 'ANY')
                     if '/api/' in route_str:
                         logger.error(
-                            "     %s %s", route.method, route_str[:80]
+                            "     %s %s", method, route_str[:80]
+                        )
+                        if '/api/ai/chat' in route_str:
+                            ai_chat_exists = True
+                            logger.error(
+                                "     ✅ Маршрут /api/ai/chat найден, "
+                                "но запрос %s %s не совпадает",
+                                request.method, request.path
+                            )
+                # Дополнительная диагностика для AI чата
+                if '/api/ai/chat' in request.path:
+                    if not ai_chat_exists:
+                        logger.error(
+                            "   ❌ Маршрут /api/ai/chat НЕ ЗАРЕГИСТРИРОВАН!"
+                        )
+                    else:
+                        logger.error(
+                            "   ⚠️ Запрос к /api/ai/chat не найден! "
+                            "Проверьте метод запроса (должен быть POST)"
                         )
             error_msg = (
                 ex.reason or
@@ -847,6 +872,22 @@ def create_webapp_app() -> web.Application:
         web.post("/api/subscription/toggle", toggle_subscription_api),
         web.get("/api/orders", get_user_orders_api),
     ])
+    
+    # Логируем зарегистрированные маршруты при запуске
+    logger.info("📋 Зарегистрированные API маршруты:")
+    ai_chat_found = False
+    for route in app.router.routes():
+        route_str = str(route.resource)
+        method = getattr(route, 'method', 'ANY')
+        if '/api/' in route_str:
+            logger.info("   %s %s", method, route_str)
+            if '/api/ai/chat' in route_str:
+                ai_chat_found = True
+    
+    if not ai_chat_found:
+        logger.error("❌ КРИТИЧНО: Маршрут /api/ai/chat НЕ ЗАРЕГИСТРИРОВАН!")
+    else:
+        logger.info("✅ Маршрут /api/ai/chat успешно зарегистрирован")
 
     # Static files
     app.add_routes([
