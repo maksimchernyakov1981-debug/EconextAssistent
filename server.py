@@ -5,13 +5,14 @@ import aiohttp
 from aiohttp import web
 from aiohttp.web import Response
 from config.settings import logger
+from database.connection import get_db_connection
 
 
 async def get_products(request: web.Request) -> Response:
     """Get all products for Mini App."""
     logger.info("Запрос товаров для Mini App от %s", request.remote)
     try:
-        with sqlite3.connect("cache.db") as conn:
+        with get_db_connection() as conn:
             conn.row_factory = sqlite3.Row
             c = conn.cursor()
             c.execute(
@@ -61,7 +62,7 @@ async def get_products(request: web.Request) -> Response:
 async def get_categories(request: web.Request) -> Response:
     """Get all categories for Mini App."""
     try:
-        with sqlite3.connect("cache.db") as conn:
+        with get_db_connection() as conn:
             conn.row_factory = sqlite3.Row
             c = conn.cursor()
             c.execute(
@@ -118,7 +119,7 @@ async def get_cart(request: web.Request) -> Response:
 
         user_id = int(user_id)
 
-        with sqlite3.connect("cache.db") as conn:
+        with get_db_connection() as conn:
             conn.row_factory = sqlite3.Row
             c = conn.cursor()
             c.execute(
@@ -280,7 +281,7 @@ async def submit_order_api(request: web.Request) -> Response:
         total = 0
 
         # Загружаем товары для расчета
-        with sqlite3.connect("cache.db") as conn:
+        with get_db_connection() as conn:
             conn.row_factory = sqlite3.Row
             c = conn.cursor()
             c.execute(
@@ -408,7 +409,7 @@ async def search_products_api(request: web.Request) -> Response:
                 status=400
             )
 
-        with sqlite3.connect("cache.db") as conn:
+        with get_db_connection() as conn:
             conn.row_factory = sqlite3.Row
             c = conn.cursor()
             c.execute(
@@ -463,7 +464,7 @@ async def ai_chat_api(request: web.Request) -> Response:
         logger.info("AI чат: user_id=%s, message=%s", user_id, message[:50])
 
         # Получаем товары
-        with sqlite3.connect("cache.db") as conn:
+        with get_db_connection() as conn:
             conn.row_factory = sqlite3.Row
             c = conn.cursor()
             c.execute(
