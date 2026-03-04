@@ -3,240 +3,183 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Econext - Каталог микрофибры</title>
+    <title>Econext — Каталог и консультант</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
     <div id="app">
-        <!-- Header -->
+        <!-- Header (общий) -->
         <header class="header">
-            <div class="header-content">
-                <h1>🛍️ Econext</h1>
-                <div class="header-actions">
-                    <button id="cart-btn" class="cart-button">
-                        🛒 <span id="cart-count">0</span>
-                    </button>
-                </div>
-            </div>
+            <button type="button" id="header-back" class="header-back hidden" aria-label="Назад">←</button>
+            <h1 class="header-title">🛍️ Econext</h1>
+            <button type="button" id="header-cart" class="header-cart" aria-label="Корзина">
+                🛒 <span id="cart-count">0</span>
+            </button>
         </header>
 
-        <!-- Navigation Tabs -->
-        <nav class="tabs">
-            <button class="tab active" data-tab="catalog">Каталог</button>
-            <button class="tab" data-tab="ai">🤖 ИИ</button>
-            <button class="tab" data-tab="cart">Корзина</button>
-            <button class="tab" data-tab="info">ℹ️</button>
-        </nav>
-
-        <!-- Loading -->
-        <div id="loading" class="loading">
-            <div class="spinner"></div>
-            <p>Загрузка...</p>
-        </div>
-
-        <!-- Error -->
-        <div id="error" class="error hidden">
-            <p id="error-message"></p>
-        </div>
-
-        <!-- Catalog Tab -->
-        <div id="catalog-tab" class="tab-content active">
-            <!-- Search -->
-            <div class="search-section">
-                <input type="text" id="search-input" placeholder="🔍 Поиск товаров..." class="search-input">
-                <button id="search-btn" class="search-btn">Найти</button>
+        <!-- Главное меню (как в боте) -->
+        <main id="screen-home" class="screen active">
+            <div class="welcome-block">
+                <p class="welcome-text">Добро пожаловать! Выберите действие:</p>
             </div>
-            
-            <!-- Categories -->
-            <div id="categories-section" class="section">
-                <h2>Категории</h2>
-                <button class="btn-primary" onclick="showAllProducts()" style="margin-bottom: 16px;">📦 Показать все товары</button>
-                <div id="categories-list" class="categories-grid"></div>
-            </div>
+            <nav class="main-menu">
+                <button type="button" class="menu-btn menu-btn-catalog" data-screen="catalog">
+                    <span class="menu-btn-icon">🛍️</span>
+                    <span class="menu-btn-title">Каталог</span>
+                    <span class="menu-btn-desc">Товары по категориям</span>
+                </button>
+                <button type="button" class="menu-btn menu-btn-ai" data-screen="ai">
+                    <span class="menu-btn-icon">🤖</span>
+                    <span class="menu-btn-title">Вопрос ИИ</span>
+                    <span class="menu-btn-desc">Спросите Максима о товарах</span>
+                </button>
+                <button type="button" class="menu-btn menu-btn-cart" data-screen="cart">
+                    <span class="menu-btn-icon">🛒</span>
+                    <span class="menu-btn-title">Корзина</span>
+                    <span class="menu-btn-desc" id="home-cart-summary">Пусто</span>
+                </button>
+                <button type="button" class="menu-btn menu-btn-info" data-screen="info">
+                    <span class="menu-btn-icon">ℹ️</span>
+                    <span class="menu-btn-title">Информация</span>
+                    <span class="menu-btn-desc">Условия, доставка, контакты</span>
+                </button>
+                <button type="button" class="menu-btn menu-btn-orders" data-screen="orders">
+                    <span class="menu-btn-icon">📦</span>
+                    <span class="menu-btn-title">Мои заказы</span>
+                    <span class="menu-btn-desc">История заказов</span>
+                </button>
+                <button type="button" class="menu-btn menu-btn-bonus" data-screen="referral">
+                    <span class="menu-btn-icon">🎁</span>
+                    <span class="menu-btn-title">Бонусы за рекомендации</span>
+                    <span class="menu-btn-desc">Реферальная программа</span>
+                </button>
+            </nav>
+        </main>
 
-            <!-- All Products -->
-            <div id="all-products-section" class="section hidden">
-                <div class="section-header">
-                    <button id="back-to-categories-from-all" class="back-button">⬅️ Назад</button>
-                    <h2>Все товары</h2>
+        <!-- Экран: Каталог -->
+        <section id="screen-catalog" class="screen">
+            <div class="screen-inner">
+                <div class="search-section">
+                    <input type="text" id="search-input" placeholder="🔍 Поиск товаров..." class="search-input">
+                    <button type="button" id="search-btn" class="search-btn">Найти</button>
                 </div>
-                <div id="all-products-list" class="products-grid"></div>
-                <div id="all-products-pagination" class="pagination"></div>
-            </div>
-
-            <!-- Products by Category -->
-            <div id="products-section" class="section hidden">
-                <div class="section-header">
-                    <button id="back-to-categories" class="back-button">⬅️ Назад</button>
-                    <h2 id="category-title"></h2>
+                <button type="button" class="btn-secondary btn-block" id="btn-show-all-products">📦 Показать все товары</button>
+                <div id="categories-section" class="section">
+                    <h2 class="section-title">Категории</h2>
+                    <div id="categories-list" class="categories-grid"></div>
                 </div>
-                <div id="products-list" class="products-grid"></div>
-                <div id="pagination" class="pagination"></div>
+                <div id="all-products-section" class="section hidden">
+                    <h2 class="section-title">Все товары</h2>
+                    <div id="all-products-list" class="products-grid"></div>
+                    <div id="all-products-pagination" class="pagination"></div>
+                </div>
+                <div id="products-section" class="section hidden">
+                    <h2 class="section-title" id="category-title"></h2>
+                    <div id="products-list" class="products-grid"></div>
+                    <div id="pagination" class="pagination"></div>
+                </div>
+                <div id="product-details" class="product-details-view hidden">
+                    <button type="button" class="back-button" id="back-from-product">← Назад к списку</button>
+                    <div id="product-content"></div>
+                </div>
             </div>
+        </section>
 
-            <!-- Product Details -->
-            <div id="product-details" class="product-details hidden">
-                <button id="back-to-products" class="back-button">⬅️ Назад</button>
-                <div id="product-content"></div>
-            </div>
-        </div>
-
-        <!-- AI Chat Tab -->
-        <div id="ai-tab" class="tab-content">
-            <div class="ai-chat-container">
+        <!-- Экран: Вопрос ИИ -->
+        <section id="screen-ai" class="screen">
+            <div class="screen-inner ai-chat-wrap">
                 <div id="ai-messages" class="ai-messages"></div>
-                <div class="ai-input-container">
-                    <input type="text" id="ai-input" placeholder="Задайте вопрос ИИ-консультанту Максиму..." class="ai-input">
-                    <button id="ai-send-btn" class="ai-send-btn">Отправить</button>
+                <div class="ai-input-row">
+                    <input type="text" id="ai-input" placeholder="Задайте вопрос ИИ-консультанту..." class="ai-input">
+                    <button type="button" id="ai-send-btn" class="ai-send-btn">Отправить</button>
                 </div>
             </div>
-        </div>
+        </section>
 
-        <!-- Cart Tab -->
-        <div id="cart-tab" class="tab-content">
-            <div id="cart-content">
+        <!-- Экран: Корзина -->
+        <section id="screen-cart" class="screen">
+            <div class="screen-inner">
                 <div id="cart-empty" class="empty-state">
-                    <p>🛒 Ваша корзина пуста</p>
-                    <button class="btn-primary" onclick="showTab('catalog')">Перейти в каталог</button>
+                    <p>🛒 Корзина пуста</p>
+                    <button type="button" class="btn-primary" data-screen="catalog">Перейти в каталог</button>
                 </div>
                 <div id="cart-items" class="cart-items hidden"></div>
                 <div id="cart-summary" class="cart-summary hidden">
-                    <div class="summary-row">
-                        <span>Товаров:</span>
-                        <span id="cart-items-count">0</span>
-                    </div>
-                    <div class="summary-row">
-                        <span>Итого:</span>
-                        <span id="cart-total">0 ₽</span>
-                    </div>
-                    <button id="checkout-btn" class="btn-primary btn-large">Оформить заказ</button>
+                    <div class="summary-row"><span>Товаров:</span><span id="cart-items-count">0</span></div>
+                    <div class="summary-row total"><span>Итого:</span><span id="cart-total">0 ₽</span></div>
+                    <button type="button" id="checkout-btn" class="btn-primary btn-large">Оформить заказ</button>
                 </div>
             </div>
-        </div>
+        </section>
 
-        <!-- Info Tab -->
-        <div id="info-tab" class="tab-content">
-            <div class="info-menu">
-                <button class="info-menu-item" onclick="showInfoSection('faq')">
-                    ❓ Частые вопросы
-                </button>
-                <button class="info-menu-item" onclick="showInfoSection('order-conditions')">
-                    📋 Условия заказа
-                </button>
-                <button class="info-menu-item" onclick="showInfoSection('how-to-order')">
-                    📋 Как заказать
-                </button>
-                <button class="info-menu-item" onclick="showInfoSection('delivery')">
-                    🚚 Доставка
-                </button>
-                <button class="info-menu-item" onclick="showInfoSection('promotions')">
-                    🎁 Акции
-                </button>
-                <button class="info-menu-item" onclick="showInfoSection('contacts')">
-                    📞 Контакты
-                </button>
-                <button class="info-menu-item" onclick="showInfoSection('wholesale')">
-                    📦 Оптовая заявка
-                </button>
-                <button class="info-menu-item" onclick="showInfoSection('subscription')">
-                    🔔 Подписка
-                </button>
-                <button class="info-menu-item" onclick="showInfoSection('referral')">
-                    🎁 Реферальная программа
-                </button>
-                <button class="info-menu-item" onclick="showInfoSection('orders')">
-                    📦 Мои заказы
-                </button>
-            </div>
-            
-            <!-- FAQ Section -->
-            <div id="faq-section" class="info-section hidden">
-                <button class="back-button" onclick="hideInfoSection()">⬅️ Назад</button>
-                <h2>❓ Частые вопросы</h2>
-                <div id="faq-list"></div>
-            </div>
-            
-            <!-- Order Conditions Section -->
-            <div id="order-conditions-section" class="info-section hidden">
-                <button class="back-button" onclick="hideInfoSection()">⬅️ Назад</button>
-                <div id="order-conditions-content"></div>
-            </div>
-            
-            <!-- How to Order Section -->
-            <div id="how-to-order-section" class="info-section hidden">
-                <button class="back-button" onclick="hideInfoSection()">⬅️ Назад</button>
-                <div id="how-to-order-content"></div>
-            </div>
-            
-            <!-- Promotions Section -->
-            <div id="promotions-section" class="info-section hidden">
-                <button class="back-button" onclick="hideInfoSection()">⬅️ Назад</button>
-                <div id="promotions-content"></div>
-            </div>
-            
-            <!-- Delivery Section -->
-            <div id="delivery-section" class="info-section hidden">
-                <button class="back-button" onclick="hideInfoSection()">⬅️ Назад</button>
-                <div id="delivery-content"></div>
-            </div>
-            
-            <!-- Contacts Section -->
-            <div id="contacts-section" class="info-section hidden">
-                <button class="back-button" onclick="hideInfoSection()">⬅️ Назад</button>
-                <div id="contacts-content"></div>
-            </div>
-            
-            <!-- Wholesale Section -->
-            <div id="wholesale-section" class="info-section hidden">
-                <button class="back-button" onclick="hideInfoSection()">⬅️ Назад</button>
-                <h2>📦 Оптовая заявка</h2>
-                <form id="wholesale-form" class="checkout-form">
-                    <div class="form-group">
-                        <label>Ваше имя *</label>
-                        <input type="text" name="name" required>
+        <!-- Экран: Информация -->
+        <section id="screen-info" class="screen">
+            <div class="screen-inner">
+                <div id="info-menu" class="info-menu">
+                    <button type="button" class="info-menu-item" data-info="faq">❓ Частые вопросы</button>
+                    <button type="button" class="info-menu-item" data-info="order-conditions">📋 Условия заказа</button>
+                    <button type="button" class="info-menu-item" data-info="how-to-order">📋 Как заказать</button>
+                    <button type="button" class="info-menu-item" data-info="delivery">🚚 Доставка</button>
+                    <button type="button" class="info-menu-item" data-info="promotions">🎁 Акции</button>
+                    <button type="button" class="info-menu-item" data-info="contacts">📞 Контакты</button>
+                    <button type="button" class="info-menu-item" data-info="wholesale">📦 Оптовая заявка</button>
+                    <button type="button" class="info-menu-item" data-info="subscription">🔔 Подписка</button>
+                </div>
+                <div id="info-content" class="info-content hidden">
+                    <div id="faq-section" class="info-section hidden"><div id="faq-list"></div></div>
+                    <div id="order-conditions-section" class="info-section hidden"><div id="order-conditions-content"></div></div>
+                    <div id="how-to-order-section" class="info-section hidden"><div id="how-to-order-content"></div></div>
+                    <div id="delivery-section" class="info-section hidden"><div id="delivery-content"></div></div>
+                    <div id="promotions-section" class="info-section hidden"><div id="promotions-content"></div></div>
+                    <div id="contacts-section" class="info-section hidden"><div id="contacts-content"></div></div>
+                    <div id="wholesale-section" class="info-section hidden">
+                        <h2 class="section-title">📦 Оптовая заявка</h2>
+                        <form id="wholesale-form" class="checkout-form">
+                            <div class="form-group"><label>Ваше имя *</label><input type="text" name="name" required></div>
+                            <div class="form-group"><label>Контакт (телефон или Telegram) *</label><input type="text" name="contact" required></div>
+                            <div class="form-group"><label>Ваш вопрос *</label><textarea name="question" required></textarea></div>
+                            <button type="submit" class="btn-primary btn-large">Отправить заявку</button>
+                        </form>
                     </div>
-                    <div class="form-group">
-                        <label>Контакт (телефон или Telegram) *</label>
-                        <input type="text" name="contact" required>
+                    <div id="subscription-section" class="info-section hidden">
+                        <h2 class="section-title">🔔 Подписка</h2>
+                        <div id="subscription-status"></div>
+                        <button type="button" id="toggle-subscription-btn" class="btn-primary btn-large">Подписаться</button>
                     </div>
-                    <div class="form-group">
-                        <label>Ваш вопрос *</label>
-                        <textarea name="question" required></textarea>
-                    </div>
-                    <button type="submit" class="btn-primary btn-large">Отправить заявку</button>
-                </form>
+                </div>
             </div>
-            
-            <!-- Subscription Section -->
-            <div id="subscription-section" class="info-section hidden">
-                <button class="back-button" onclick="hideInfoSection()">⬅️ Назад</button>
-                <h2>🔔 Подписка</h2>
-                <div id="subscription-status"></div>
-                <button id="toggle-subscription-btn" class="btn-primary btn-large">Подписаться</button>
+        </section>
+
+        <!-- Экран: Мои заказы -->
+        <section id="screen-orders" class="screen">
+            <div class="screen-inner">
+                <h2 class="section-title">📦 Мои заказы</h2>
+                <div id="orders-list" class="orders-list"></div>
             </div>
-            
-            <!-- Referral Section -->
-            <div id="referral-section" class="info-section hidden">
-                <button class="back-button" onclick="hideInfoSection()">⬅️ Назад</button>
-                <div id="referral-content"></div>
+        </section>
+
+        <!-- Экран: Бонусы / Реферальная программа -->
+        <section id="screen-referral" class="screen">
+            <div class="screen-inner">
+                <div id="referral-content" class="info-text"></div>
             </div>
-            
-            <!-- Orders Section -->
-            <div id="orders-section" class="info-section hidden">
-                <button class="back-button" onclick="hideInfoSection()">⬅️ Назад</button>
-                <h2>📦 Мои заказы</h2>
-                <div id="orders-list"></div>
-            </div>
+        </section>
+
+        <!-- Loading -->
+        <div id="loading" class="loading hidden">
+            <div class="spinner"></div>
+            <p>Загрузка...</p>
         </div>
+        <div id="error" class="error hidden"><p id="error-message"></p></div>
     </div>
 
-    <!-- Checkout Modal -->
+    <!-- Модальное окно: Оформление заказа -->
     <div id="checkout-modal" class="modal hidden">
         <div class="modal-content">
             <div class="modal-header">
                 <h2>Оформление заказа</h2>
-                <button class="close-btn" onclick="closeCheckoutModal()">✕</button>
+                <button type="button" class="close-btn" id="close-checkout">✕</button>
             </div>
             <form id="checkout-form" class="checkout-form">
                 <div class="form-group">
@@ -275,4 +218,3 @@
     <script src="/static/js/app.js"></script>
 </body>
 </html>
-

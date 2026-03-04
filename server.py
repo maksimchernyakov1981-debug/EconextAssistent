@@ -346,7 +346,31 @@ async def serve_index(request: web.Request) -> Response:
             )
         with open(file_path, "r", encoding="utf-8") as f:
             content = f.read()
-        logger.debug("Отправка index.html")
+
+        # Вставляем базовый URL для API в HTML для JavaScript
+        from config.settings import API_BASE_URL
+        # Убираем trailing slash если есть
+        base_url = API_BASE_URL.rstrip('/')
+        
+        # Всегда добавляем скрипт с API_BASE_URL перед закрывающим тегом head
+        # Это гарантирует, что window.API_BASE_URL будет установлен до загрузки app.js
+        script_tag = (
+            f'<script>window.API_BASE_URL = "{base_url}";</script>'
+        )
+        
+        # Вставляем скрипт перед закрывающим тегом head
+        if '</head>' in content:
+            content = content.replace('</head>', f'{script_tag}</head>')
+        elif '</body>' in content:
+            # Если нет </head>, вставляем перед </body>
+            content = content.replace('</body>', f'{script_tag}</body>')
+        else:
+            # Если нет ни того, ни другого, добавляем в конец
+            content = content + script_tag
+
+        logger.info(
+            "✅ Отправка index.html с базовым URL для API: %s", base_url
+        )
         return Response(text=content, content_type="text/html")
     except Exception as e:
         logger.error("Ошибка загрузки index.html: %s", e, exc_info=True)

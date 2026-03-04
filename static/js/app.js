@@ -8,10 +8,16 @@ if (tg) {
 }
 
 // Base URL для API запросов
-// Используем текущий origin, чтобы запросы шли на тот же сервер
-const API_BASE_URL = window.location.origin;
+// Приоритет: window.API_BASE_URL (устанавливается сервером) > window.location.origin
+// Это нужно, когда мини-приложение на Vercel, а API на другом сервере
+const API_BASE_URL = window.API_BASE_URL || window.location.origin;
 console.log('🌐 Базовый URL для API:', API_BASE_URL);
 console.log('📍 Текущий URL:', window.location.href);
+console.log('📍 window.location.origin:', window.location.origin);
+console.log('📍 window.API_BASE_URL:', window.API_BASE_URL);
+if (API_BASE_URL === window.location.origin) {
+    console.warn('⚠️ API_BASE_URL равен window.location.origin. Если мини-приложение на Vercel, а API на другом сервере, установите API_BASE_URL в .env');
+}
 
 // Helper function to get user ID from Telegram WebApp
 function getUserId() {
@@ -77,7 +83,10 @@ let state = {
     currentCategory: null,
     currentProduct: null,
     currentPage: 1,
-    itemsPerPage: 10
+    itemsPerPage: 10,
+    currentScreen: 'home',
+    catalogView: 'categories', // 'categories' | 'products' | 'all' | 'product'
+    infoSubSection: null       // null | 'faq' | 'order-conditions' | ...
 };
 
 // Helper function to safely parse JSON response
@@ -168,21 +177,15 @@ async function safeJsonParse(response) {
 
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
-    // Отладочная информация
     console.log('🚀 Инициализация Mini App...');
-    console.log('📍 Текущий URL:', window.location.href);
-    console.log('🌐 Базовый URL для API:', API_BASE_URL);
-    console.log('Telegram WebApp доступен:', !!tg);
-    if (tg) {
-        console.log('initDataUnsafe:', tg.initDataUnsafe);
-        console.log('initData:', tg.initData ? 'доступен' : 'недоступен');
-    }
+    console.log('🌐 API:', API_BASE_URL);
     const userId = getUserId();
     console.log('User ID:', userId || 'не определен');
     
     await loadData();
     setupEventListeners();
     updateCartCount();
+    updateHomeCartSummary();
 });
 
 // Load data
@@ -288,6 +291,7 @@ async function loadCart() {
             state.cart = data.cart;
             renderCart();
             updateCartCount();
+            updateHomeCartSummary();
         } else {
             console.warn('Ошибка загрузки корзины:', data.error);
         }
@@ -296,36 +300,113 @@ async function loadCart() {
     }
 }
 
+// --- Навигация по экранам (как в боте) ---
+function showScreen(screenId) {
+    document.querySelectorAll('.screen').forEach(el => el.classList.remove('active'));
+    const screen = document.getElementById('screen-' + screenId);
+    if (screen) screen.classList.add('active');
+    state.currentScreen = screenId;
+    
+    const headerBack = document.getElementById('header-back');
+    if (headerBack) headerBack.classList.toggle('hidden', screenId === 'home');
+    
+    if (screenId === 'catalog') {
+        state.catalogView = 'categories';
+        showCatalogView('categories');
+    } else if (screenId === 'info') {
+        state.infoSubSection = null;
+        document.getElementById('info-menu').classList.remove('hidden');
+        document.getElementById('info-content').classList.add('hidden');
+    } else if (screenId === 'cart') {
+        loadCart();
+    } else if (screenId === 'ai') {
+        const messagesContainer = document.getElementById('ai-messages');
+        if (messagesContainer && messagesContainer.children.length === 0) {
+            addAIMessage('assistant', '👋 Привет! Я Максим, ИИ-консультант по микрофибре. Спрашивайте о товарах, уборке, использовании — отвечу и подскажу товары.');
+        }
+        setTimeout(() => document.getElementById('ai-input')?.focus(), 100);
+    } else if (screenId === 'orders') {
+        loadOrders();
+    } else if (screenId === 'referral') {
+        loadReferralContent();
+    }
+    
+    updateHomeCartSummary();
+}
+
+function showCatalogView(view) {
+    state.catalogView = view;
+    document.getElementById('categories-section').classList.toggle('hidden', view !== 'categories');
+    document.getElementById('products-section').classList.toggle('hidden', view !== 'products');
+    document.getElementById('all-products-section').classList.toggle('hidden', view !== 'all');
+    document.getElementById('product-details').classList.toggle('hidden', view !== 'product');
+    if (view === 'categories') renderCategories();
+    else if (view === 'products') renderProducts();
+}
+
+function goBack() {
+    if (state.currentScreen === 'catalog') {
+        if (state.catalogView === 'product') {
+            showCatalogView(state.currentCategory ? 'products' : 'all');
+        } else if (state.catalogView === 'products' || state.catalogView === 'all') {
+            showCatalogView('categories');
+        } else {
+            showScreen('home');
+        }
+    } else if (state.currentScreen === 'info' && state.infoSubSection) {
+        state.infoSubSection = null;
+        document.getElementById('info-menu').classList.remove('hidden');
+        document.getElementById('info-content').classList.add('hidden');
+    } else {
+        showScreen('home');
+    }
+}
+
+function updateHomeCartSummary() {
+    const el = document.getElementById('home-cart-summary');
+    if (!el) return;
+    if (state.cart.length === 0) {
+        el.textContent = 'Пусто';
+        return;
+    }
+    const count = state.cart.reduce((s, i) => s + i.quantity, 0);
+    const total = state.cart.reduce((s, i) => s + (i.subtotal || 0), 0);
+    el.textContent = count + ' т., ' + total.toFixed(0) + ' ₽';
+}
+
 // Setup event listeners
 function setupEventListeners() {
-    // Tabs
-    document.querySelectorAll('.tab').forEach(tab => {
-        tab.addEventListener('click', () => {
-            const tabName = tab.dataset.tab;
-            showTab(tabName);
-        });
+    document.querySelectorAll('.menu-btn[data-screen]').forEach(btn => {
+        btn.addEventListener('click', () => showScreen(btn.dataset.screen));
     });
     
-    // Back buttons
-    document.getElementById('back-to-categories')?.addEventListener('click', () => {
-        showCategories();
-    });
+    document.getElementById('header-back')?.addEventListener('click', goBack);
+    document.getElementById('header-cart')?.addEventListener('click', () => showScreen('cart'));
     
-    document.getElementById('back-to-products')?.addEventListener('click', () => {
-        showProducts(state.currentCategory);
-    });
+    document.querySelector('#cart-empty [data-screen="catalog"]')?.addEventListener('click', () => showScreen('catalog'));
     
-    // Cart button
-    document.getElementById('cart-btn')?.addEventListener('click', () => {
-        showTab('cart');
-    });
-    
-    // Checkout
-    document.getElementById('checkout-btn')?.addEventListener('click', () => {
-        openCheckoutModal();
-    });
-    
+    document.getElementById('checkout-btn')?.addEventListener('click', openCheckoutModal);
     document.getElementById('checkout-form')?.addEventListener('submit', handleCheckout);
+    document.getElementById('close-checkout')?.addEventListener('click', closeCheckoutModal);
+    
+    document.getElementById('btn-show-all-products')?.addEventListener('click', () => {
+        if (state.currentScreen !== 'catalog') showScreen('catalog');
+        showAllProducts();
+    });
+    document.getElementById('search-btn')?.addEventListener('click', searchProducts);
+    document.getElementById('search-input')?.addEventListener('keypress', (e) => { if (e.key === 'Enter') searchProducts(); });
+    
+    document.getElementById('ai-send-btn')?.addEventListener('click', sendAIMessage);
+    document.getElementById('ai-input')?.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendAIMessage(); });
+    
+    document.querySelectorAll('.info-menu-item[data-info]').forEach(btn => {
+        btn.addEventListener('click', () => showInfoSection(btn.dataset.info));
+    });
+    
+    document.getElementById('toggle-subscription-btn')?.addEventListener('click', toggleSubscription);
+    document.getElementById('wholesale-form')?.addEventListener('submit', submitWholesale);
+    
+    document.getElementById('back-from-product')?.addEventListener('click', () => goBack());
 }
 
 // Show loading
@@ -341,42 +422,10 @@ function showError(message) {
     setTimeout(() => errorEl.classList.add('hidden'), 5000);
 }
 
-// Show tab
+// Совместимость: showTab -> showScreen
 function showTab(tabName) {
-    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-    
-    const tabButton = document.querySelector(`[data-tab="${tabName}"]`);
-    const tabContent = document.getElementById(`${tabName}-tab`);
-    
-    if (tabButton) tabButton.classList.add('active');
-    if (tabContent) tabContent.classList.add('active');
-    
-    if (tabName === 'cart') {
-        loadCart();
-    } else if (tabName === 'ai') {
-        // Initialize AI chat
-        const messagesContainer = document.getElementById('ai-messages');
-        if (messagesContainer && messagesContainer.children.length === 0) {
-            addAIMessage('assistant', '👋 Привет! Я Максим, твой ИИ-консультант по микрофибре. Задай мне любой вопрос о товарах, уборке или использовании микрофибры!');
-        }
-        // Фокус на поле ввода
-        setTimeout(() => {
-            const aiInput = document.getElementById('ai-input');
-            if (aiInput) aiInput.focus();
-        }, 100);
-    } else if (tabName === 'info') {
-        // Reset info section
-        hideInfoSection();
-    } else if (tabName === 'catalog') {
-        // Убеждаемся что категории видны
-        if (state.categories.length > 0 && !document.getElementById('categories-section').classList.contains('hidden')) {
-            // Все ок
-        } else if (state.categories.length === 0) {
-            // Перезагружаем данные
-            loadData();
-        }
-    }
+    const map = { catalog: 'catalog', ai: 'ai', cart: 'cart', info: 'info' };
+    showScreen(map[tabName] || tabName);
 }
 
 // Render categories
@@ -408,29 +457,21 @@ function renderCategories() {
     console.log(`✅ Отображено ${state.categories.length} категорий`);
 }
 
-// Show products
+// Show products (в каталоге)
 function showProducts(categoryId) {
     state.currentCategory = categoryId;
     state.currentPage = 1;
-    
     const category = state.categories.find(c => c.id === categoryId);
     document.getElementById('category-title').textContent = category?.name || 'Товары';
-    
-    document.getElementById('categories-section').classList.add('hidden');
-    document.getElementById('products-section').classList.remove('hidden');
-    document.getElementById('product-details').classList.add('hidden');
-    
+    showCatalogView('products');
     renderProducts();
 }
 
-// Show categories
+// Show categories (назад к категориям)
 function showCategories() {
-    document.getElementById('categories-section').classList.remove('hidden');
-    document.getElementById('products-section').classList.add('hidden');
-    document.getElementById('all-products-section').classList.add('hidden');
-    document.getElementById('product-details').classList.add('hidden');
     state.currentCategory = null;
     state.currentProduct = null;
+    showCatalogView('categories');
 }
 
 // Render products
@@ -493,10 +534,7 @@ function createProductCard(product) {
 // Show product details
 function showProductDetails(product) {
     state.currentProduct = product;
-    
-    document.getElementById('products-section').classList.add('hidden');
-    document.getElementById('all-products-section').classList.add('hidden');
-    document.getElementById('product-details').classList.remove('hidden');
+    showCatalogView('product');
     
     const container = document.getElementById('product-content');
     const image = product.pictures && product.pictures[0]
@@ -747,7 +785,7 @@ async function handleCheckout(e) {
             });
             closeCheckoutModal();
             await loadCart();
-            showTab('catalog');
+            showScreen('catalog');
         } else {
             tg.showAlert('Ошибка: ' + (data.error || 'Неизвестная ошибка'));
         }
@@ -804,13 +842,10 @@ async function searchProducts() {
         
         if (data.success) {
             state.currentCategory = null;
-            document.getElementById('categories-section').classList.add('hidden');
-            document.getElementById('products-section').classList.add('hidden');
-            document.getElementById('all-products-section').classList.remove('hidden');
-            
+            showScreen('catalog');
+            showCatalogView('all');
             const container = document.getElementById('all-products-list');
             container.innerHTML = '';
-            
             if (data.products.length === 0) {
                 container.innerHTML = '<div class="empty-state"><p>Товары не найдены</p></div>';
             } else {
@@ -835,14 +870,9 @@ function showAllProducts() {
         showError('Товары не загружены. Пожалуйста, обновите страницу.');
         return;
     }
-    
-    document.getElementById('categories-section').classList.add('hidden');
-    document.getElementById('products-section').classList.add('hidden');
-    document.getElementById('all-products-section').classList.remove('hidden');
-    document.getElementById('product-details').classList.add('hidden');
-    
     state.currentCategory = null;
     state.currentProduct = null;
+    showCatalogView('all');
     
     const container = document.getElementById('all-products-list');
     if (!container) {
@@ -936,8 +966,8 @@ async function sendAIMessage() {
             if (data.order_buttons_mode) {
                 const orderButtonsHtml = `
                     <div class="ai-order-buttons" style="margin-top: 10px;">
-                        <button class="btn-primary" onclick="showTab('cart'); setTimeout(() => openCheckoutModal(), 300);" style="margin: 5px; padding: 10px;">🚀 Оформить заказ</button>
-                        <button class="btn-secondary" onclick="showTab('cart');" style="margin: 5px; padding: 10px;">🛒 Корзина</button>
+                        <button class="btn-primary" onclick="showScreen('cart'); setTimeout(() => openCheckoutModal(), 300);" style="margin: 5px; padding: 10px;">🚀 Оформить заказ</button>
+                        <button class="btn-secondary" onclick="showScreen('cart');" style="margin: 5px; padding: 10px;">🛒 Корзина</button>
                     </div>
                 `;
                 addAIMessage('assistant', orderButtonsHtml, false, true);
@@ -1006,7 +1036,7 @@ async function showProductDetailsById(productId) {
                 state.products = data.products;
                 product = state.products.find(p => String(p.id) === String(productId));
                 if (product) {
-                    showTab('catalog');
+                    showScreen('catalog');
                     setTimeout(() => showProductDetails(product), 100);
                 } else {
                     const errorMsg = 'Товар не найден';
@@ -1033,36 +1063,35 @@ async function showProductDetailsById(productId) {
             }
         }
     } else {
-        showTab('catalog');
+        showScreen('catalog');
         setTimeout(() => showProductDetails(product), 100);
     }
 }
 
 // Info section functions
 function showInfoSection(section) {
-    document.querySelectorAll('.info-section').forEach(s => s.classList.add('hidden'));
-    document.querySelector('.info-menu').classList.add('hidden');
-    
+    state.infoSubSection = section;
+    document.getElementById('info-menu').classList.add('hidden');
+    document.getElementById('info-content').classList.remove('hidden');
+    document.querySelectorAll('#info-content .info-section').forEach(s => s.classList.add('hidden'));
     const sectionEl = document.getElementById(`${section}-section`);
     if (sectionEl) {
         sectionEl.classList.remove('hidden');
-        
-        // Load section data
         if (section === 'faq') loadFAQ();
-        else if (section === 'orders') loadOrders();
-        else if (section === 'subscription') loadSubscription();
         else if (section === 'order-conditions') loadOrderConditions();
         else if (section === 'how-to-order') loadHowToOrder();
         else if (section === 'delivery') loadDelivery();
         else if (section === 'contacts') loadContacts();
         else if (section === 'promotions') loadPromotions();
-        else if (section === 'referral') loadReferral();
+        else if (section === 'wholesale') { /* form already in HTML */ }
+        else if (section === 'subscription') loadSubscription();
     }
 }
 
 function hideInfoSection() {
-    document.querySelectorAll('.info-section').forEach(s => s.classList.add('hidden'));
-    document.querySelector('.info-menu').classList.remove('hidden');
+    state.infoSubSection = null;
+    document.getElementById('info-menu').classList.remove('hidden');
+    document.getElementById('info-content').classList.add('hidden');
 }
 
 async function loadFAQ() {
@@ -1172,14 +1201,19 @@ function loadContacts() {
 
 function loadReferral() {
     const container = document.getElementById('referral-content');
+    if (!container) return;
     container.innerHTML = `
-        <h2>🎁 Реферальная программа</h2>
+        <h2 class="section-title">🎁 Реферальная программа</h2>
         <div class="info-text">
             <p>Приглашайте друзей и получайте бонусы!</p>
             <p>За каждого приглашенного друга вы получите бонусы на ваш счет.</p>
             <p>Ваша реферальная ссылка будет доступна в боте.</p>
         </div>
     `;
+}
+
+function loadReferralContent() {
+    loadReferral();
 }
 
 async function loadOrders() {
@@ -1381,65 +1415,8 @@ async function submitWholesale(e) {
     }
 }
 
-// Update event listeners
-function setupEventListeners() {
-    // Tabs
-    document.querySelectorAll('.tab').forEach(tab => {
-        tab.addEventListener('click', () => {
-            const tabName = tab.dataset.tab;
-            showTab(tabName);
-        });
-    });
-    
-    // Back buttons
-    document.getElementById('back-to-categories')?.addEventListener('click', () => {
-        showCategories();
-    });
-    
-    document.getElementById('back-to-categories-from-all')?.addEventListener('click', () => {
-        showCategories();
-    });
-    
-    document.getElementById('back-to-products')?.addEventListener('click', () => {
-        if (state.currentCategory) {
-            showProducts(state.currentCategory);
-        } else {
-            showAllProducts();
-        }
-    });
-    
-    // Cart button
-    document.getElementById('cart-btn')?.addEventListener('click', () => {
-        showTab('cart');
-    });
-    
-    // Checkout
-    document.getElementById('checkout-btn')?.addEventListener('click', () => {
-        openCheckoutModal();
-    });
-    
-    document.getElementById('checkout-form')?.addEventListener('submit', handleCheckout);
-    
-    // Search
-    document.getElementById('search-btn')?.addEventListener('click', searchProducts);
-    document.getElementById('search-input')?.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') searchProducts();
-    });
-    
-    // AI Chat
-    document.getElementById('ai-send-btn')?.addEventListener('click', sendAIMessage);
-    document.getElementById('ai-input')?.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') sendAIMessage();
-    });
-    
-    // Subscription
-    document.getElementById('toggle-subscription-btn')?.addEventListener('click', toggleSubscription);
-    
-    // Wholesale
-    document.getElementById('wholesale-form')?.addEventListener('submit', submitWholesale);
-}
-
-// Make functions global for onclick handlers
+// Глобальные функции для onclick в разметке
+window.showScreen = showScreen;
 window.showTab = showTab;
 window.addToCart = addToCart;
 window.removeFromCart = removeFromCart;
@@ -1448,21 +1425,11 @@ window.changePage = changePage;
 window.closeCheckoutModal = closeCheckoutModal;
 window.showInfoSection = showInfoSection;
 window.hideInfoSection = hideInfoSection;
-// Export functions to window for HTML onclick handlers
 window.showProductDetailsById = showProductDetailsById;
 window.showAllProducts = showAllProducts;
 window.searchProducts = searchProducts;
-window.showInfoSection = showInfoSection;
-window.hideInfoSection = hideInfoSection;
-window.addToCart = addToCart;
-window.removeFromCart = removeFromCart;
-window.updateQuantity = updateQuantity;
 window.openCheckoutModal = openCheckoutModal;
-window.closeCheckoutModal = closeCheckoutModal;
-window.showTab = showTab;
 window.showCategories = showCategories;
 window.toggleSubscription = toggleSubscription;
-window.showAllProducts = showAllProducts;
-window.searchProducts = searchProducts;
 window.sendAIMessage = sendAIMessage;
 
