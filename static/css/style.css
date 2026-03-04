@@ -593,4 +593,31 @@ body {
 }
 .error.hidden { display: none !important; }
 
+/* Кнопка «В главное меню» на каждом экране */
+.screen-footer {
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 2px solid var(--secondary-bg);
+}
+.btn-back-to-menu {
+    display: block;
+    width: 100%;
+    padding: 14px 20px;
+    background: var(--secondary-bg);
+    border: 2px solid var(--hint);
+    border-radius: var(--radius-sm);
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text);
+    cursor: pointer;
+    text-align: center;
+}
+.btn-back-to-menu:active {
+    background: var(--hint);
+    color: var(--button-text);
+}
+.btn-back-inline {
+    margin-top: 12px;
+}
+
 .hidden { display: none !important; }

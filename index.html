@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Econext — Каталог и консультант</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <!-- URL API (каталог, корзина, ИИ). При деплое на Vercel укажите сюда адрес бэкенда с той же БД. -->
+    <script>window.API_BASE_URL = window.API_BASE_URL || "https://econextassistent-maxcher1981.amvera.io";</script>
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
@@ -83,6 +85,9 @@
                     <button type="button" class="back-button" id="back-from-product">← Назад к списку</button>
                     <div id="product-content"></div>
                 </div>
+                <div class="screen-footer">
+                    <button type="button" class="btn-back-to-menu" data-screen="home">← В главное меню</button>
+                </div>
             </div>
         </section>
 
@@ -93,6 +98,9 @@
                 <div class="ai-input-row">
                     <input type="text" id="ai-input" placeholder="Задайте вопрос ИИ-консультанту..." class="ai-input">
                     <button type="button" id="ai-send-btn" class="ai-send-btn">Отправить</button>
+                </div>
+                <div class="screen-footer">
+                    <button type="button" class="btn-back-to-menu" data-screen="home">← В главное меню</button>
                 </div>
             </div>
         </section>
@@ -110,6 +118,9 @@
                     <div class="summary-row total"><span>Итого:</span><span id="cart-total">0 ₽</span></div>
                     <button type="button" id="checkout-btn" class="btn-primary btn-large">Оформить заказ</button>
                 </div>
+                <div class="screen-footer">
+                    <button type="button" class="btn-back-to-menu" data-screen="home">← В главное меню</button>
+                </div>
             </div>
         </section>
 
@@ -125,8 +136,10 @@
                     <button type="button" class="info-menu-item" data-info="contacts">📞 Контакты</button>
                     <button type="button" class="info-menu-item" data-info="wholesale">📦 Оптовая заявка</button>
                     <button type="button" class="info-menu-item" data-info="subscription">🔔 Подписка</button>
+                    <button type="button" class="btn-back-to-menu btn-back-inline" data-screen="home">← В главное меню</button>
                 </div>
                 <div id="info-content" class="info-content hidden">
+                    <button type="button" class="back-button" id="back-from-info-section">← К разделу Информация</button>
                     <div id="faq-section" class="info-section hidden"><div id="faq-list"></div></div>
                     <div id="order-conditions-section" class="info-section hidden"><div id="order-conditions-content"></div></div>
                     <div id="how-to-order-section" class="info-section hidden"><div id="how-to-order-content"></div></div>
@@ -156,6 +169,9 @@
             <div class="screen-inner">
                 <h2 class="section-title">📦 Мои заказы</h2>
                 <div id="orders-list" class="orders-list"></div>
+                <div class="screen-footer">
+                    <button type="button" class="btn-back-to-menu" data-screen="home">← В главное меню</button>
+                </div>
             </div>
         </section>
 
@@ -163,6 +179,9 @@
         <section id="screen-referral" class="screen">
             <div class="screen-inner">
                 <div id="referral-content" class="info-text"></div>
+                <div class="screen-footer">
+                    <button type="button" class="btn-back-to-menu" data-screen="home">← В главное меню</button>
+                </div>
             </div>
         </section>
 

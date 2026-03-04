@@ -379,8 +379,12 @@ function setupEventListeners() {
     document.querySelectorAll('.menu-btn[data-screen]').forEach(btn => {
         btn.addEventListener('click', () => showScreen(btn.dataset.screen));
     });
+    document.querySelectorAll('.btn-back-to-menu[data-screen]').forEach(btn => {
+        btn.addEventListener('click', () => showScreen(btn.dataset.screen));
+    });
     
     document.getElementById('header-back')?.addEventListener('click', goBack);
+    document.getElementById('back-from-info-section')?.addEventListener('click', goBack);
     document.getElementById('header-cart')?.addEventListener('click', () => showScreen('cart'));
     
     document.querySelector('#cart-empty [data-screen="catalog"]')?.addEventListener('click', () => showScreen('catalog'));
